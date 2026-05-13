@@ -1,0 +1,100 @@
+"use client";
+
+interface LineChartProps {
+  data: number[];
+  height?: number;
+  color?: string;
+  showDots?: boolean;
+  yLabel?: (v: number) => string;
+}
+
+export function LineChart({ data, height = 180, color = 'var(--accent)', showDots, yLabel }: LineChartProps) {
+  const W = 600, H = height, padL = 36, padR = 8, padT = 16, padB = 22;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const stepX = (W - padL - padR) / (data.length - 1);
+  const pts = data.map((v, i) => [padL + i * stepX, padT + (1 - (v - min) / range) * (H - padT - padB)] as [number, number]);
+  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
+  const areaPath = path + ` L${pts[pts.length - 1][0]},${H - padB} L${padL},${H - padB} Z`;
+  const fmt = yLabel ?? ((v: number) => v.toString());
+  const gid = `lcg-${Math.random().toString(36).slice(2, 7)}`;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+      <defs>
+        <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <g className="chart-grid">
+        {[0, 1, 2, 3].map(i => {
+          const y = padT + (i / 3) * (H - padT - padB);
+          const v = max - (i / 3) * range;
+          return (
+            <g key={i}>
+              <line x1={padL} x2={W - padR} y1={y} y2={y} />
+              <text x={padL - 8} y={y + 4} fill="var(--text-mute)" fontSize="10" textAnchor="end"
+                fontFamily="var(--font-mono)">
+                {fmt(v)}
+              </text>
+            </g>
+          );
+        })}
+      </g>
+      <path d={areaPath} fill={`url(#${gid})`} />
+      <path d={path} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      {showDots && pts.map((p, i) => (
+        <circle key={i} cx={p[0]} cy={p[1]}
+          r={i === pts.length - 1 ? 4.5 : 0}
+          fill={color} stroke="var(--bg)" strokeWidth="2" />
+      ))}
+    </svg>
+  );
+}
+
+interface BarChartProps { data: number[]; height?: number; }
+
+export function BarChart({ data, height = 180 }: BarChartProps) {
+  const W = 600, H = height, padT = 16, padB = 22, padL = 36, padR = 8;
+  const max = Math.max(...data);
+  const barW = (W - padL - padR) / data.length * 0.55;
+  const gap = (W - padL - padR) / data.length;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+      <g className="chart-grid">
+        {[0, 1, 2, 3].map(i => {
+          const y = padT + (i / 3) * (H - padT - padB);
+          return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} />;
+        })}
+      </g>
+      {data.map((v, i) => {
+        const h = (v / max) * (H - padT - padB);
+        const x = padL + i * gap + (gap - barW) / 2;
+        const isLast = i === data.length - 1;
+        return (
+          <rect key={i} x={x} y={H - padB - h} width={barW} height={h} rx="3"
+            fill={isLast ? 'var(--accent)' : 'var(--surface-3)'} />
+        );
+      })}
+    </svg>
+  );
+}
+
+interface SparklineProps { data: number[]; width?: number; height?: number; color?: string; }
+
+export function Sparkline({ data, width = 100, height = 30, color = 'var(--accent)' }: SparklineProps) {
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const stepX = width / (data.length - 1);
+  const path = data.map((v, i) =>
+    `${i === 0 ? 'M' : 'L'}${i * stepX},${(1 - (v - min) / range) * height}`
+  ).join(' ');
+
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <path d={path} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
