@@ -1,0 +1,81 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+
+export interface SetData {
+  id?: number;
+  reps: number;
+  weight: number;
+  done: boolean;
+  prev: number;
+}
+
+export interface Exercise {
+  id?: number;
+  name: string;
+  muscle: string;
+  restSeconds: number;
+  sets: SetData[];
+}
+
+export interface Workout {
+  id: number;
+  name: string;
+  code: string;
+  schedule: string;
+  tags: string[];
+  exercises: Exercise[];
+  duration: number;
+  totalSets: number;
+  volume: number;
+  lastDone?: string;
+}
+
+export function useWorkouts() {
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      setLoading(true);
+      const data = await api.get<Workout[]>("/workouts");
+      setWorkouts(data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar treinos.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function createWorkout(req: Omit<Workout, "id" | "duration" | "totalSets" | "volume">) {
+    const created = await api.post<Workout>("/workouts", req);
+    setWorkouts(prev => [...prev, created]);
+    return created;
+  }
+
+  async function deleteWorkout(id: number) {
+    await api.delete(`/workouts/${id}`);
+    setWorkouts(prev => prev.filter(w => w.id !== id));
+  }
+
+  return { workouts, loading, error, reload: load, createWorkout, deleteWorkout };
+}
+
+export function useWorkout(id: string) {
+  const [workout, setWorkout] = useState<Workout | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<Workout>(`/workouts/${id}`)
+      .then(setWorkout)
+      .catch(err => setError(err instanceof Error ? err.message : "Erro."))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  return { workout, loading, error };
+}
