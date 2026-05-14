@@ -4,14 +4,16 @@ const PUBLIC_ROUTES = ["/login", "/register"];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const token = request.cookies.get("token")?.value;
+  const isPublic = PUBLIC_ROUTES.some(r => pathname.startsWith(r));
 
-  if (PUBLIC_ROUTES.some(r => pathname.startsWith(r))) {
-    return NextResponse.next();
+  // Autenticado a tentar aceder ao login → manda para o dashboard
+  if (token && isPublic) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
-  const token = request.cookies.get("token")?.value;
-
-  if (!token) {
+  // Não autenticado a tentar aceder a rota protegida → manda para login
+  if (!token && !isPublic) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
