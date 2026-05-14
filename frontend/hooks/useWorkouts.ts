@@ -57,12 +57,19 @@ export function useWorkouts() {
     return created;
   }
 
+  // Atualiza um treino existente no backend e sincroniza o estado local
+  async function updateWorkout(id: number, req: Omit<Workout, "id" | "duration" | "totalSets" | "volume">) {
+    const updated = await api.put<Workout>(`/workouts/${id}`, req);
+    setWorkouts(prev => prev.map(w => w.id === id ? updated : w));
+    return updated;
+  }
+
   async function deleteWorkout(id: number) {
     await api.delete(`/workouts/${id}`);
     setWorkouts(prev => prev.filter(w => w.id !== id));
   }
 
-  return { workouts, loading, error, reload: load, createWorkout, deleteWorkout };
+  return { workouts, loading, error, reload: load, createWorkout, updateWorkout, deleteWorkout };
 }
 
 export function useWorkout(id: string) {
