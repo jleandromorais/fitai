@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Edit2, Play, Timer, Dumbbell, Target, Weight, Info, RefreshCw, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Edit2, Play, Timer, Dumbbell, Target, Weight, Info, RefreshCw, Check, Loader2, Save } from "lucide-react";
 import { useWorkout, Exercise } from "@/hooks/useWorkouts";
 
 export default function TreinoDetalhe() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const { workout, loading, error } = useWorkout(id);
+  const { workout, loading, error, saveExercises } = useWorkout(id);
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [timer, setTimer] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (workout) setExercises(workout.exercises.map(e => ({ ...e, sets: e.sets.map(s => ({ ...s })) })));
@@ -24,6 +27,51 @@ export default function TreinoDetalhe() {
     const t = setTimeout(() => setTimer(timer - 1), 1000);
     return () => clearTimeout(t);
   }, [timer]);
+
+  function updateSet(exIdx: number, setIdx: number, field: "weight" | "reps", value: number) {
+    setExercises(prev => {
+      const next = prev.map((e, ei) => ei !== exIdx ? e : {
+        ...e,
+        sets: e.sets.map((s, si) => si !== setIdx ? s : { ...s, [field]: value }),
+      });
+      scheduleSave(next);
+      return next;
+    });
+  }
+
+  function scheduleSave(exs: Exercise[]) {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(() => persistSave(exs), 1500);
+  }
+
+  async function persistSave(exs: Exercise[]) {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await saveExercises(exs);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleDone(exIdx: number, setIdx: number) {
+    const key = `${exIdx}-${setIdx}`;
+    const isDone = !(completed[key] ?? exercises[exIdx]?.sets[setIdx]?.done ?? false);
+    setCompleted(prev => ({ ...prev, [key]: isDone }));
+    if (isDone) setTimer(exercises[exIdx]?.restSeconds ?? 60);
+
+    const next = exercises.map((e, ei) => ei !== exIdx ? e : {
+      ...e,
+      sets: e.sets.map((s, si) => si !== setIdx ? s : { ...s, done: isDone }),
+    });
+    setExercises(next);
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    await persistSave(next);
+  }
 
   if (loading) return (
     <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
@@ -40,8 +88,8 @@ export default function TreinoDetalhe() {
   );
 
   const totalSets = exercises.reduce((s, e) => s + e.sets.length, 0);
-  const doneSets = exercises.reduce((s, e) =>
-    s + e.sets.filter((_, i) => completed[`${e.id}-${i}`] ?? e.sets[i].done).length, 0);
+  const doneSets = exercises.reduce((s, e, ei) =>
+    s + e.sets.filter((_, si) => completed[`${ei}-${si}`] ?? e.sets[si].done).length, 0);
   const progress = totalSets ? (doneSets / totalSets) * 100 : 0;
 
   const th: React.CSSProperties = {
@@ -55,6 +103,16 @@ export default function TreinoDetalhe() {
       <div className="row gap-3" style={{ marginBottom: 16 }}>
         <button className="icon-btn" onClick={() => router.back()}><ArrowLeft size={18} /></button>
         <div className="h-eyebrow">Voltar · Treinos</div>
+        {saving && (
+          <div className="row gap-2" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-mute)" }}>
+            <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Salvando...
+          </div>
+        )}
+        {saved && !saving && (
+          <div className="row gap-2" style={{ marginLeft: "auto", fontSize: 12, color: "var(--accent)" }}>
+            <Save size={12} /> Salvo
+          </div>
+        )}
       </div>
 
       <div className="page-head">
@@ -68,7 +126,6 @@ export default function TreinoDetalhe() {
           </div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-secondary"><Edit2 size={14} /> Editar</button>
           <button className="btn btn-primary btn-lg"><Play size={14} fill="currentColor" /> Iniciar treino</button>
         </div>
       </div>
@@ -121,28 +178,33 @@ export default function TreinoDetalhe() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ex.sets.map((s, i) => {
-                    const key = `${ex.id}-${i}`;
+                  {ex.sets.map((s, setIdx) => {
+                    const key = `${exIdx}-${setIdx}`;
                     const isDone = completed[key] ?? s.done;
                     return (
-                      <tr key={i} style={{ borderTop: "1px solid var(--border-soft)" }}>
-                        <td style={{ ...td, color: "var(--text-mute)", fontFamily: "var(--font-mono)" }}>{i + 1}</td>
+                      <tr key={setIdx} style={{ borderTop: "1px solid var(--border-soft)" }}>
+                        <td style={{ ...td, color: "var(--text-mute)", fontFamily: "var(--font-mono)" }}>{setIdx + 1}</td>
                         <td style={{ ...td, color: "var(--text-mute)", fontFamily: "var(--font-mono)" }}>
                           {s.prev ? `${s.prev}kg × ${s.reps}` : "–"}
                         </td>
                         <td style={td}>
-                          <input defaultValue={s.weight} style={{ width: 56, background: "transparent", border: "none", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, outline: "none" }} />
+                          <input
+                            value={s.weight ?? ""}
+                            onChange={e => updateSet(exIdx, setIdx, "weight", parseFloat(e.target.value) || 0)}
+                            style={{ width: 56, background: "transparent", border: "none", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, outline: "none" }}
+                          />
                           <span style={{ color: "var(--text-mute)", marginLeft: 4, fontSize: 11 }}>kg</span>
                         </td>
                         <td style={td}>
-                          <input defaultValue={s.reps} style={{ width: 40, background: "transparent", border: "none", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, outline: "none" }} />
+                          <input
+                            value={s.reps ?? ""}
+                            onChange={e => updateSet(exIdx, setIdx, "reps", parseInt(e.target.value) || 0)}
+                            style={{ width: 40, background: "transparent", border: "none", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, outline: "none" }}
+                          />
                         </td>
                         <td style={{ ...td, textAlign: "right" }}>
                           <button
-                            onClick={() => {
-                              setCompleted(prev => ({ ...prev, [key]: !isDone }));
-                              if (!isDone) setTimer(ex.restSeconds);
-                            }}
+                            onClick={() => toggleDone(exIdx, setIdx)}
                             style={{
                               width: 30, height: 30, borderRadius: 8, border: "none",
                               background: isDone ? "var(--accent)" : "var(--surface-2)",
@@ -171,7 +233,7 @@ export default function TreinoDetalhe() {
                 <div className="pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }} />
               </div>
               <div className="h-display" style={{ fontSize: 56, fontFamily: "var(--font-mono)" }}>
-                0:{String(timer).padStart(2, "0")}
+                {String(Math.floor(timer / 60)).padStart(2, "0")}:{String(timer % 60).padStart(2, "0")}
               </div>
               <div className="row gap-2" style={{ marginTop: 16 }}>
                 <button className="btn btn-secondary btn-sm flex-1" onClick={() => setTimer(null)}>Pular</button>

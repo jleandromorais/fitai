@@ -77,5 +77,17 @@ export function useWorkout(id: string) {
       .finally(() => setLoading(false));
   }, [id]);
 
-  return { workout, loading, error };
+  async function saveExercises(exercises: Exercise[]) {
+    if (!workout) return;
+    const updated = await api.put<Workout>(`/workouts/${id}`, {
+      name: workout.name,
+      code: workout.code,
+      schedule: workout.schedule,
+      tags: workout.tags,
+      exercises,
+    });
+    setWorkout(updated);
+  }
+
+  return { workout, loading, error, saveExercises };
 }

@@ -107,11 +107,46 @@ public class WorkoutService {
         return toDto(workoutRepository.save(workout));
     }
 
-    /*
-     * DELETAR TREINO
-     * Verifica se o treino existe E pertence ao usuário antes de apagar.
-     * Não deixa apagar treino dos outros!
-     */
+    @Transactional
+    public WorkoutDto update(Long id, WorkoutRequest req, String email) {
+        Workout workout = workoutRepository.findByIdAndUserEmail(id, email)
+                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+
+        workout.setName(req.getName());
+        workout.setCode(req.getCode());
+        workout.setSchedule(req.getSchedule());
+        workout.setTags(req.getTags() != null ? req.getTags() : List.of());
+
+        workout.getExercises().clear();
+
+        if (req.getExercises() != null) {
+            for (ExerciseDto eDto : req.getExercises()) {
+                Exercise exercise = Exercise.builder()
+                        .workout(workout)
+                        .name(eDto.getName())
+                        .muscle(eDto.getMuscle())
+                        .restSeconds(eDto.getRestSeconds())
+                        .build();
+
+                if (eDto.getSets() != null) {
+                    for (SetDataDto sDto : eDto.getSets()) {
+                        SetData set = SetData.builder()
+                                .exercise(exercise)
+                                .reps(sDto.getReps())
+                                .weight(sDto.getWeight())
+                                .done(sDto.getDone() != null ? sDto.getDone() : false)
+                                .prev(sDto.getPrev())
+                                .build();
+                        exercise.getSets().add(set);
+                    }
+                }
+                workout.getExercises().add(exercise);
+            }
+        }
+
+        return toDto(workoutRepository.save(workout));
+    }
+
     @Transactional
     public void delete(Long id, String email) {
         Workout w = workoutRepository.findByIdAndUserEmail(id, email)

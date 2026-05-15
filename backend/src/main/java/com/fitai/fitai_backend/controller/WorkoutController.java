@@ -36,6 +36,13 @@ public class WorkoutController {
         return ResponseEntity.ok(workoutService.create(req, user.getUsername()));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<WorkoutDto> update(@PathVariable Long id,
+                                             @Valid @RequestBody WorkoutRequest req,
+                                             @AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok(workoutService.update(id, req, user.getUsername()));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id,
                                        @AuthenticationPrincipal UserDetails user) {
