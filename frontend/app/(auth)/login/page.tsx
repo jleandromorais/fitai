@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GoogleLogin } from "@react-oauth/google";
 
 const API = "http://localhost:8081";
@@ -13,8 +13,12 @@ function saveSession(data: { token: string; name: string; email: string }) {
   document.cookie = `token=${data.token}; path=/; max-age=${60 * 60 * 24}; SameSite=Strict`;
 }
 
-export default function LoginPage() {
+// Componente separado para usar useSearchParams dentro do Suspense
+function LoginForm() {
   const router = useRouter();
+  // Se o middleware redirecionou de uma rota protegida, volta para lá após login
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") ?? "/";
   const [tab, setTab] = useState<"entrar" | "criar">("entrar");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -41,7 +45,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Erro ao autenticar.");
       saveSession(data);
-      router.push("/");
+      router.push(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
@@ -62,7 +66,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Falha no Google login.");
       saveSession(data);
-      router.push("/");
+      router.push(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
@@ -247,5 +251,14 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Página exportada envolve o formulário em Suspense (obrigatório para useSearchParams no Next.js 13+)
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

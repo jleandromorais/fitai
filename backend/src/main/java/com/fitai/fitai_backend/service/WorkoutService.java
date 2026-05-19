@@ -89,10 +89,10 @@ public class WorkoutService {
 
                         // Cada série tem: quantas repetições, quanto peso, se foi feita, e o peso da vez anterior
                         SetData set = SetData.builder()
-                                .exercise(exercise) // Liga a série ao exercício pai
+                                .exercise(exercise)
                                 .reps(sDto.getReps())
                                 .weight(sDto.getWeight())
-                                .done(sDto.getDone() != null ? sDto.getDone() : false) // Se não informar, considera não feita
+                                .done(Boolean.TRUE.equals(sDto.getDone())) // null-safe: null → false
                                 .prev(sDto.getPrev())
                                 .build();
 
@@ -107,18 +107,28 @@ public class WorkoutService {
         return toDto(workoutRepository.save(workout));
     }
 
+    /*
+     * ATUALIZAR TREINO
+     * Substitui completamente os dados do treino (nome, código, dias, tags e exercícios).
+     * Remove os exercícios/sets antigos via orphanRemoval e recria do zero,
+     * garantindo que não fique lixo no banco.
+     */
     @Transactional
     public WorkoutDto update(Long id, WorkoutRequest req, String email) {
+        // Busca o treino garantindo que pertence ao utilizador autenticado
         Workout workout = workoutRepository.findByIdAndUserEmail(id, email)
                 .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
 
+        // Atualiza os campos simples
         workout.setName(req.getName());
         workout.setCode(req.getCode());
         workout.setSchedule(req.getSchedule());
         workout.setTags(req.getTags() != null ? req.getTags() : List.of());
 
+        // Remove todos os exercícios antigos — o orphanRemoval cuida dos sets
         workout.getExercises().clear();
 
+        // Recria os exercícios com os novos dados
         if (req.getExercises() != null) {
             for (ExerciseDto eDto : req.getExercises()) {
                 Exercise exercise = Exercise.builder()
@@ -134,7 +144,7 @@ public class WorkoutService {
                                 .exercise(exercise)
                                 .reps(sDto.getReps())
                                 .weight(sDto.getWeight())
-                                .done(sDto.getDone() != null ? sDto.getDone() : false)
+                                .done(Boolean.TRUE.equals(sDto.getDone())) // null-safe
                                 .prev(sDto.getPrev())
                                 .build();
                         exercise.getSets().add(set);
@@ -147,6 +157,157 @@ public class WorkoutService {
         return toDto(workoutRepository.save(workout));
     }
 
+    /*
+     * SALVAR SESSÃO DE TREINO
+     *
+     * Chamado quando o utilizador clica "Finalizar treino".
+     * Para cada série recebida:
+     *   1. Marca done = true (ou false se o utilizador não a completou)
+     *   2. Move o peso atual para prev (histórico da última execução)
+     *   3. Grava o novo peso e reps reais
+     *
+     * Isso permite mostrar na próxima sessão "última vez: 60kg × 10"
+     * e calcular a evolução de carga ao longo do tempo.
+     */
+    @Transactional
+    public SessionResponse saveSession(Long workoutId, SessionRequest req, String email) {
+        Workout workout = workoutRepository.findByIdAndUserEmail(workoutId, email)
+                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+
+        int setsCompleted = 0;
+        double totalVolume = 0.0;
+
+        for (ExerciseSessionDto exDto : req.getExercises()) {
+            // Encontra o exercício pelo ID dentro do treino
+            Exercise exercise = workout.getExercises().stream()
+                    .filter(e -> e.getId().equals(exDto.getExerciseId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (exercise == null) continue;
+
+            for (SetSessionDto setDto : exDto.getSets()) {
+                // getSetIndex() é Integer — usar intValue() para evitar unboxing implícito
+                if (setDto.getSetIndex() == null) continue;
+                int idx = setDto.getSetIndex().intValue();
+                if (idx < 0 || idx >= exercise.getSets().size()) continue;
+
+                SetData set = exercise.getSets().get(idx);
+
+                // Guarda o peso anterior antes de sobrescrever
+                set.setPrev(set.getWeight());
+
+                // Actualiza com os valores reais da sessão (mantém valor antigo se null)
+                if (setDto.getWeight() != null) set.setWeight(setDto.getWeight());
+                if (setDto.getReps()   != null) set.setReps(setDto.getReps());
+                set.setDone(Boolean.TRUE.equals(setDto.getDone()));
+
+                if (Boolean.TRUE.equals(setDto.getDone())) {
+                    setsCompleted++;
+                    // Null-safe: usa 0 como fallback para não lançar NullPointerException
+                    double w = set.getWeight() != null ? set.getWeight().doubleValue() : 0.0;
+                    int    r = set.getReps()   != null ? set.getReps().intValue()       : 0;
+                    totalVolume += w * r;
+                }
+            }
+        }
+
+        // Arredonda o volume para 1 casa decimal
+        totalVolume = Math.round(totalVolume * 10.0) / 10.0;
+
+        workoutRepository.save(workout);
+
+        return new SessionResponse(setsCompleted, totalVolume,
+                req.getDurationMinutes() != null ? req.getDurationMinutes() : 0);
+    }
+
+    /*
+     * PROGRESSO DO UTILIZADOR
+     *
+     * Calcula a evolução de carga por exercício e o volume total acumulado.
+     * Usa os campos `weight` (peso atual) e `prev` (peso da sessão anterior)
+     * que são atualizados em cada sessão pelo saveSession().
+     *
+     * Não requer tabela extra — os dados já estão no SetData.
+     */
+    public ProgressDto getProgress(String email) {
+        List<Workout> workouts = workoutRepository.findAllByUserEmail(email);
+
+        // Volume e séries globais
+        double totalVolume = 0.0;
+        int totalSetsCompleted = 0;
+
+        // Volume e label por treino (para o gráfico de barras)
+        List<Double> volumePerWorkout = new java.util.ArrayList<>();
+        List<String> workoutLabels   = new java.util.ArrayList<>();
+
+        // Mapa exercício → ExerciseProgressDto (agrupa séries do mesmo exercício)
+        // Chave = nome do exercício (case-insensitive para evitar duplicatas)
+        java.util.Map<String, ExerciseProgressDto> exerciseMap = new java.util.LinkedHashMap<>();
+
+        for (Workout w : workouts) {
+            double workoutVolume = 0.0;
+
+            for (Exercise ex : w.getExercises()) {
+                // Peso máximo atual e anterior entre todas as séries do exercício
+                double maxCurrent = 0.0;
+                double maxPrev    = 0.0;
+                int    setsDone   = 0;
+
+                for (SetData s : ex.getSets()) {
+                    double curr = s.getWeight() != null ? s.getWeight().doubleValue() : 0.0;
+                    double prev = s.getPrev()   != null ? s.getPrev().doubleValue()   : 0.0;
+                    int    reps = s.getReps()   != null ? s.getReps().intValue()       : 0;
+
+                    if (curr > maxCurrent) maxCurrent = curr;
+                    if (prev > maxPrev)    maxPrev    = prev;
+
+                    if (Boolean.TRUE.equals(s.getDone())) {
+                        workoutVolume  += curr * reps;
+                        totalVolume    += curr * reps;
+                        totalSetsCompleted++;
+                        setsDone++;
+                    }
+                }
+
+                // Registra ou actualiza o exercício no mapa (mantém o maior peso visto)
+                String key = ex.getName().toLowerCase();
+                ExerciseProgressDto existing = exerciseMap.get(key);
+                if (existing == null || maxCurrent > existing.getCurrentWeight()) {
+                    exerciseMap.put(key, new ExerciseProgressDto(
+                            ex.getName(),
+                            ex.getMuscle(),
+                            maxCurrent,
+                            maxPrev,
+                            Math.round((maxCurrent - maxPrev) * 10.0) / 10.0,
+                            ex.getSets().size()
+                    ));
+                }
+            }
+
+            volumePerWorkout.add(Math.round(workoutVolume * 10.0) / 10.0);
+            workoutLabels.add(w.getName());
+        }
+
+        // Ordena exercícios por delta decrescente (maior ganho primeiro)
+        List<ExerciseProgressDto> exercises = new java.util.ArrayList<>(exerciseMap.values());
+        exercises.sort((a, b) -> Double.compare(b.getDelta(), a.getDelta()));
+
+        return new ProgressDto(
+                Math.round(totalVolume * 10.0) / 10.0,
+                totalSetsCompleted,
+                workouts.size(),
+                volumePerWorkout,
+                workoutLabels,
+                exercises
+        );
+    }
+
+    /*
+     * DELETAR TREINO
+     * Verifica se o treino existe E pertence ao usuário antes de apagar.
+     * Não deixa apagar treino dos outros!
+     */
     @Transactional
     public void delete(Long id, String email) {
         Workout w = workoutRepository.findByIdAndUserEmail(id, email)
@@ -196,10 +357,11 @@ public class WorkoutService {
 
         // Calcula o volume total: peso × reps de cada série, somados
         // Ex: 3 séries de 10 reps com 60kg = 1800kg de volume
+        // Null-safe: usa doubleValue()/intValue() explícitos para evitar unboxing implícito
         double volume = exercises.stream()
                 .flatMap(e -> e.getSets().stream())
-                .mapToDouble(s -> (s.getWeight() != null ? s.getWeight() : 0)
-                                * (s.getReps() != null ? s.getReps() : 0))
+                .mapToDouble(s -> (s.getWeight() != null ? s.getWeight().doubleValue() : 0.0)
+                                * (s.getReps()   != null ? s.getReps().intValue()       : 0))
                 .sum();
 
         // Monta o DTO final com tudo calculado

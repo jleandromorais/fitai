@@ -1,8 +1,14 @@
 "use client";
 
 import { Edit2, Bell, Settings, Flame, Trophy, Target, ChevronRight, LogOut, Sparkles } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function PerfilPage() {
+  const { user, logout } = useAuth();
+  const initials = user?.name
+    ? user.name.split(" ").slice(0, 2).map(w => w[0].toUpperCase()).join("")
+    : "?";
+
   return (
     <div className="anim-up">
       <div className="page-head">
@@ -18,10 +24,10 @@ export default function PerfilPage() {
           {/* User card */}
           <div className="card" style={{ padding: 28 }}>
             <div className="row gap-4">
-              <div className="avatar" style={{ width: 72, height: 72, fontSize: 24 }}>MS</div>
+              <div className="avatar" style={{ width: 72, height: 72, fontSize: 24 }}>{initials}</div>
               <div style={{ flex: 1 }}>
-                <div className="h-display" style={{ fontSize: 24 }}>Marina Silva</div>
-                <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>marina@fitai.app</div>
+                <div className="h-display" style={{ fontSize: 24 }}>{user?.name ?? "—"}</div>
+                <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>{user?.email ?? "—"}</div>
                 <div className="row gap-2" style={{ marginTop: 10 }}>
                   <span className="chip chip-accent">Plano Pro</span>
                   <span className="chip">12 dias streak 🔥</span>
@@ -77,7 +83,11 @@ export default function PerfilPage() {
           ))}
 
           {/* Logout */}
-          <button className="btn btn-danger btn-block" style={{ justifyContent: "flex-start", gap: 12, padding: "14px 20px" }}>
+          <button
+            className="btn btn-danger btn-block"
+            style={{ justifyContent: "flex-start", gap: 12, padding: "14px 20px" }}
+            onClick={logout}
+          >
             <LogOut size={16} /> Sair da conta
           </button>
         </div>
