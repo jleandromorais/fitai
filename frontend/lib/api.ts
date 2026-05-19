@@ -18,8 +18,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ message: "Erro desconhecido." }));
-    throw new Error(error.message || `Erro ${res.status}`);
+    // Tenta JSON primeiro; se falhar, usa o texto puro para diagnóstico
+    const body = await res.text();
+    let message = `Erro ${res.status}`;
+    try {
+      const json = JSON.parse(body);
+      message = json.message || json.error || message;
+    } catch {
+      // corpo não é JSON (ex: HTML do Spring Whitelabel Error)
+      if (body) message = `Erro ${res.status}: ${body.slice(0, 120)}`;
+    }
+    throw new Error(message);
   }
 
   // 204 No Content
