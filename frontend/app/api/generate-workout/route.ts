@@ -26,7 +26,7 @@ export interface GenerateResponse {
 }
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
 
 function buildPrompt(req: GenerateRequest): string {
   return `Você é um personal trainer especialista. Crie um plano de treino personalizado em JSON.
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY não configurada." }, { status: 500 });
   }
+  console.log("GEMINI_API_KEY lida:", apiKey?.slice(0, 10) + "...");
 
   const body: GenerateRequest = await req.json();
 
