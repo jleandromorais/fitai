@@ -4,7 +4,113 @@ Documentação de todas as alterações realizadas no projeto, organizadas por c
 
 ---
 
-## [Não publicado] — 2026-05-21
+## [Não publicado] — 2026-05-21 (sessão 2)
+
+### Problemas de alta prioridade — Flyway, Rate Limiting e Refresh Token
+
+---
+
+#### Problema 1 — Schema gerenciado pelo Hibernate (`ddl-auto=update`)
+
+O Hibernate em modo `update` aplica alterações de schema silenciosamente e de forma não rastreável, o que é perigoso em produção (sem rollback, sem histórico).
+
+**Solução: Flyway**
+
+**`backend/build.gradle`** — dependências adicionadas:
+```
+org.flywaydb:flyway-core
+org.flywaydb:flyway-database-postgresql
+```
+
+**`backend/src/main/resources/application.properties`** — alterações:
+- `ddl-auto=update` → `ddl-auto=validate` (Hibernate só confere; quem cria é o Flyway)
+- `spring.flyway.enabled=true`
+- `spring.flyway.locations=classpath:db/migration`
+
+**Migrations criadas** em `backend/src/main/resources/db/migration/`:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `V1__initial_schema.sql` | Recria com `IF NOT EXISTS` as tabelas `useres`, `workouts`, `workout_tags`, `exercises`, `set_data` — espelha exatamente o que o Hibernate gerava antes |
+| `V2__add_refresh_token.sql` | Adiciona colunas `refresh_token` e `refresh_token_expiry` na tabela `useres` |
+
+> **Migração de banco existente:** se o banco já existir e o Flyway reclamar de "table already exists", adicione `spring.flyway.baseline-on-migrate=true` e `spring.flyway.baseline-version=1` para que o Flyway considere o estado atual como a linha de base.
+
+---
+
+#### Problema 2 — Rate Limiting nos endpoints de autenticação
+
+Endpoints `/auth/login`, `/auth/register` e `/auth/google` não tinham nenhuma proteção contra brute-force.
+
+**Solução: `RateLimitFilter`** — novo arquivo `backend/src/main/java/.../security/RateLimitFilter.java`
+
+- Limite: **10 requisições por IP a cada 60 segundos** nos endpoints `/auth/**`
+- Janela deslizante com `ConcurrentHashMap` thread-safe — sem dependências externas
+- Resposta ao ultrapassar o limite: HTTP `429 Too Many Requests` com JSON `{"error": "Muitas tentativas. Aguarde 1 minuto."}`
+- Leitura do IP real via header `X-Forwarded-For` (para ambientes atrás de proxy/load balancer)
+- Limpeza periódica automática das entradas expiradas a cada 5 minutos
+
+**`backend/.../config/SecurityConfig.java`** — alterações:
+- `RateLimitFilter` injetado e registrado antes do `JwtFilter` na cadeia do Spring Security
+- Origens CORS migradas de lista hardcoded para `@Value("${cors.allowed-origins}")`, lida do `application.properties`
+
+**`backend/src/main/resources/application.properties`** — nova propriedade:
+```
+cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:3002}
+```
+
+---
+
+#### Problema 3 — Sem mecanismo de refresh token
+
+Access tokens expirava em 24h sem possibilidade de renovação — o usuário era forçado a fazer login novamente.
+
+**Backend — modelo (`User.java`)**
+- Dois novos campos: `refreshToken` (VARCHAR 512) e `refreshTokenExpiry` (TIMESTAMP)
+- Adicionados via `V2__add_refresh_token.sql` (Flyway)
+
+**Backend — `JwtUtil.java`** — novos métodos:
+- `generateRefreshToken()` — gera token opaco aleatório de 48 bytes (Base64 URL-safe), via `SecureRandom`
+- `refreshTokenExpiry()` — calcula `Instant` de expiração usando `jwt.refresh-expiration`
+- `getRefreshExpirationSeconds()` — converte ms para segundos
+
+**Backend — `AuthService.java`** — refatoração:
+- Método privado `buildAuthResponse(User)` centraliza a geração de access + refresh token e persistência
+- Todos os fluxos (`register`, `login`, `loginWithGoogle`) passam por `buildAuthResponse`
+- Novo método `refresh(RefreshRequest)` — valida o token armazenado, verifica expiração e emite novo par de tokens
+
+**Backend — `AuthResponse.java`** — novo campo `refreshToken` no DTO de resposta
+
+**Backend — `RefreshRequest.java`** — novo DTO com campo `refreshToken` validado com `@NotBlank`
+
+**Backend — `UserRepository.java`** — novo método `findByRefreshToken(String)`
+
+**Backend — `AuthController.java`** — novo endpoint:
+```
+POST /auth/refresh   { "refreshToken": "..." }  →  AuthResponse
+```
+
+**Backend — `application.properties`** — nova propriedade:
+```
+jwt.refresh-expiration=${JWT_REFRESH_EXPIRATION:604800000}   # 7 dias
+```
+
+**Frontend — `contexts/AuthContext.tsx`** — alterações:
+- `refreshAccessToken()` exposto no contexto — chama `POST /auth/refresh` e atualiza `localStorage` com o novo par de tokens
+- `logout()` agora remove também `refreshToken` do `localStorage`
+- URL do backend lida via `NEXT_PUBLIC_API_URL` (sem hardcode)
+
+**Frontend — `app/(auth)/login/page.tsx`** — alterações:
+- `saveSession()` agora persiste `refreshToken` no `localStorage`
+- URL do backend via `process.env.NEXT_PUBLIC_API_URL`
+
+**Frontend — `lib/api.ts`** — alterações:
+- Comentários JSDoc adicionados pelo linter descrevendo cada bloco da função `request`
+- Sem mudança de comportamento — apenas legibilidade
+
+---
+
+## [Não publicado] — 2026-05-21 (sessão 1)
 
 ### Correções críticas de segurança e portabilidade
 
