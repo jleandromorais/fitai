@@ -1,42 +1,22 @@
-HELP.md
-.gradle
+# Gradle
+.gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
 bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
 
-### IntelliJ IDEA ###
-.idea
-*.iws
+# Credenciais locais — NUNCA commite application.properties com senhas reais
+# Use application.properties.example como referência e defina via variáveis de ambiente
+src/main/resources/application-local.properties
+
+# Logs de erro da JVM
+hs_err_pid*.log
+replay_pid*.log
+
+# IDE
+.idea/
 *.iml
 *.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
+*.iws
 .vscode/
 
-### Secrets ###
-src/main/resources/application.properties
-src/main/resources/application-*.properties
-response.txt
+# macOS
+.DS_Store
