@@ -4,6 +4,26 @@ Documentação de todas as alterações realizadas no projeto, organizadas por c
 
 ---
 
+## [Não publicado] — 2026-05-21 (sessão 5)
+
+### Refatoração dos modais de treino — eliminação de duplicação
+
+`NovoTreinoModal` (~1165 linhas) e `EditarTreinoModal` (~506 linhas) compartilhavam tipos, constantes, estilos e dois blocos de UI idênticos. Extraídos para arquivos e componentes reutilizáveis.
+
+**`frontend/lib/workout-shared.ts`** *(novo)* — tipos, constantes, funções e estilos compartilhados: `SetRow`, `ExerciseRow`, `SlotDef`, `SplitDef`, `SPLITS`, `uid()`, `makeSet()`, `chipToggleStyle()`, etc.
+
+**`frontend/components/ui/SetsTable.tsx`** *(novo)* — tabela de séries (peso/reps/descanso). Antes: ~45 linhas duplicadas em cada modal.
+
+**`frontend/components/ui/ExerciseCatalog.tsx`** *(novo)* — painel de busca, filtro por grupo, sugestões do catálogo e exercício personalizado. Antes: ~80 linhas duplicadas em cada modal.
+
+**`NovoTreinoModal.tsx`**: ~1165 → ~280 linhas (redução de 76%)
+
+**`EditarTreinoModal.tsx`**: ~506 → ~190 linhas (redução de 62%)
+
+Comportamento e UI preservados integralmente.
+
+---
+
 ## [Não publicado] — 2026-05-21 (sessão 3)
 
 ### Testes unitários do backend (0% → cobertura das camadas principais)
