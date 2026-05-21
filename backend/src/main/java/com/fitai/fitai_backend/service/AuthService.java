@@ -1,10 +1,12 @@
 package com.fitai.fitai_backend.service;
 
 import com.fitai.fitai_backend.dto.AuthResponse;
+import com.fitai.fitai_backend.dto.ForgotPasswordRequest;
 import com.fitai.fitai_backend.dto.GoogleAuthRequest;
 import com.fitai.fitai_backend.dto.LoginRequest;
 import com.fitai.fitai_backend.dto.RefreshRequest;
 import com.fitai.fitai_backend.dto.RegisterRequest;
+import com.fitai.fitai_backend.dto.ResetPasswordRequest;
 import com.fitai.fitai_backend.model.User;
 import com.fitai.fitai_backend.repository.UserRepository;
 import com.fitai.fitai_backend.security.JwtUtil;
@@ -110,6 +112,56 @@ public class AuthService {
 
         log.info("Refresh token renovado: email={}", user.getEmail());
         return buildAuthResponse(user);
+    }
+
+    // Gera um token de reset e o armazena no usuário (válido por 30 min).
+    // Em produção, o token seria enviado por e-mail; aqui é retornado na resposta
+    // para que o frontend possa redirecionar o usuário sem depender de SMTP.
+    public String forgotPassword(ForgotPasswordRequest request) {
+        log.info("Solicitação de reset de senha: email={}", request.getEmail());
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> {
+                    log.warn("Reset solicitado para email não cadastrado: {}", request.getEmail());
+                    return new IllegalArgumentException("Email não encontrado.");
+                });
+
+        if (user.getGoogleId() != null && user.getPassword() == null) {
+            throw new IllegalArgumentException("Esta conta usa login pelo Google. Não é possível redefinir senha.");
+        }
+
+        String token = jwtUtil.generateRefreshToken(); // token opaco aleatório
+        user.setResetToken(token);
+        user.setResetTokenExpiry(Instant.now().plusSeconds(1800)); // 30 minutos
+        userRepository.save(user);
+
+        log.info("Token de reset gerado: email={}", user.getEmail());
+        return token;
+    }
+
+    public void resetPassword(ResetPasswordRequest request) {
+        log.info("Tentativa de reset de senha com token");
+
+        User user = userRepository.findByResetToken(request.getToken())
+                .orElseThrow(() -> {
+                    log.warn("Reset falhou — token não encontrado");
+                    return new IllegalArgumentException("Token inválido.");
+                });
+
+        if (user.getResetTokenExpiry() == null || Instant.now().isAfter(user.getResetTokenExpiry())) {
+            log.warn("Reset falhou — token expirado: email={}", user.getEmail());
+            user.setResetToken(null);
+            user.setResetTokenExpiry(null);
+            userRepository.save(user);
+            throw new IllegalArgumentException("Token expirado. Solicite um novo link.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setResetToken(null);
+        user.setResetTokenExpiry(null);
+        userRepository.save(user);
+
+        log.info("Senha redefinida com sucesso: email={}", user.getEmail());
     }
 
     private AuthResponse buildAuthResponse(User user) {

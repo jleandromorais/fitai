@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Sparkles, Plus, Play, Edit2, Trash2, Loader2 } from "lucide-react";
+import { Sparkles, Plus, Play, Edit2, Trash2, Loader2, Search, X } from "lucide-react";
 import { useWorkouts, Workout } from "@/hooks/useWorkouts";
 import NovoTreinoModal from "@/components/NovoTreinoModal";
 import EditarTreinoModal from "@/components/EditarTreinoModal";
@@ -11,21 +11,24 @@ const FILTERS = ["Todos", "Força", "Hipertrofia", "Volume", "Acessório"];
 
 export default function TreinosPage() {
   const { workouts, loading, error, reload, deleteWorkout } = useWorkouts();
-  const [filter, setFilter] = useState("Todos");
-
-  // Controla abertura do modal de criação
-  const [showNovo, setShowNovo] = useState(false);
-
-  // Treino selecionado para edição (null = modal fechado)
-  const [editando, setEditando] = useState<Workout | null>(null);
-
-  // Treino aguardando confirmação de exclusão
+  const [filter, setFilter]       = useState("Todos");
+  const [query, setQuery]         = useState("");
+  const [showNovo, setShowNovo]   = useState(false);
+  const [editando, setEditando]   = useState<Workout | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Workout | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting]   = useState(false);
 
-  const filtered = workouts.filter(w =>
-    filter === "Todos" || w.tags.includes(filter)
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return workouts.filter(w => {
+      const matchFilter = filter === "Todos" || w.tags.includes(filter);
+      const matchQuery  = !q ||
+        w.name.toLowerCase().includes(q) ||
+        w.exercises.some(e => e.name.toLowerCase().includes(q)) ||
+        w.tags.some(t => t.toLowerCase().includes(q));
+      return matchFilter && matchQuery;
+    });
+  }, [workouts, filter, query]);
 
   async function handleDelete(w: Workout) {
     setDeleting(true);
@@ -56,13 +59,28 @@ export default function TreinosPage() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="row gap-2" style={{ marginBottom: 24, flexWrap: "wrap" }}>
-        {FILTERS.map(f => (
-          <button key={f} className={`chip${filter === f ? " active" : ""}`} onClick={() => setFilter(f)}>
-            {f}
-          </button>
-        ))}
+      {/* Busca + Filtros */}
+      <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ position: "relative" }}>
+          <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-mute)", pointerEvents: "none" }} />
+          <input
+            className="input"
+            placeholder="Buscar por nome, exercício ou tag..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            style={{ paddingLeft: 38, paddingRight: query ? 36 : 12 }}
+          />
+          {query && (
+            <button onClick={() => setQuery("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", display: "flex" }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+          {FILTERS.map(f => (
+            <button key={f} className={`chip${filter === f ? " active" : ""}`} onClick={() => setFilter(f)}>{f}</button>
+          ))}
+        </div>
       </div>
 
       {/* Loading */}
@@ -88,6 +106,20 @@ export default function TreinosPage() {
           <Link href="/ai-gen" className="btn btn-primary">
             <Sparkles size={16} /> Gerar com IA
           </Link>
+        </div>
+      )}
+
+      {/* Sem resultados de busca */}
+      {!loading && !error && workouts.length > 0 && filtered.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: 48 }}>
+          <Search size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Nenhum treino encontrado</div>
+          <p style={{ color: "var(--text-mute)", fontSize: 13, marginBottom: 16 }}>
+            Nenhum treino corresponde a &ldquo;{query}&rdquo;.
+          </p>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setQuery(""); setFilter("Todos"); }}>
+            Limpar filtros
+          </button>
         </div>
       )}
 
