@@ -7,24 +7,42 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.Date;
 
-// Componente Spring responsável por gerar, validar e extrair informações de tokens JWT
+// Componente Spring responsável por gerar, validar e extrair informações de tokens JWT e refresh tokens
 @Component
 public class JwtUtil {
 
-    // Chave criptográfica derivada do segredo configurado no application.properties
     private final SecretKey key;
-
-    // Tempo de expiração do token em milissegundos (ex: 86400000 = 24h)
     private final long expiration;
+    private final long refreshExpiration;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public JwtUtil(
-            @Value("${jwt.secret}") String secret,         // Segredo injetado do application.properties
-            @Value("${jwt.expiration}") long expiration) { // Expiração injetada do application.properties
-        // A chave deve ter no mínimo 32 caracteres para HMAC-SHA256.
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") long expiration,
+            @Value("${jwt.refresh-expiration}") long refreshExpiration) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
+        this.refreshExpiration = refreshExpiration;
+    }
+
+    public long getRefreshExpirationSeconds() {
+        return refreshExpiration / 1000;
+    }
+
+    // Gera um refresh token opaco aleatório de 48 bytes (URL-safe Base64)
+    public String generateRefreshToken() {
+        byte[] bytes = new byte[48];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    public Instant refreshTokenExpiry() {
+        return Instant.now().plusSeconds(getRefreshExpirationSeconds());
     }
 
     // Gera um token JWT assinado com o e-mail do usuário como subject
