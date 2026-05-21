@@ -29,6 +29,20 @@ public class JwtUtil {
         this.refreshExpiration = refreshExpiration;
     }
 
+    public long getRefreshExpirationSeconds() {
+        return refreshExpiration / 1000;
+    }
+
+    public String generateRefreshToken() {
+        byte[] bytes = new byte[48];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    public Instant refreshTokenExpiry() {
+        return Instant.now().plusSeconds(getRefreshExpirationSeconds());
+    }
+
     public String generateToken(String email) {
         return Jwts.builder()
                 .subject(email)
@@ -54,19 +68,5 @@ public class JwtUtil {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
-    }
-
-    public String generateRefreshToken() {
-        byte[] bytes = new byte[48];
-        secureRandom.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    public Instant refreshTokenExpiry() {
-        return Instant.now().plusSeconds(getRefreshExpirationSeconds());
-    }
-
-    public long getRefreshExpirationSeconds() {
-        return refreshExpiration / 1000;
     }
 }
