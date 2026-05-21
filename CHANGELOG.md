@@ -4,6 +4,105 @@ Documentação de todas as alterações realizadas no projeto, organizadas por c
 
 ---
 
+## [Não publicado] — 2026-05-21 (sessão 3)
+
+### Testes unitários do backend (0% → cobertura das camadas principais)
+
+Criados 5 arquivos de teste cobrindo segurança, serviços e tratamento de erros. Todos os testes são unitários puro (sem contexto Spring, sem banco), usando **JUnit 5 + Mockito + AssertJ**.
+
+**`build.gradle`** — dependência adicionada:
+- `spring-boot-test-autoconfigure` (necessário para resolver `@WebMvcTest` no IDE)
+
+---
+
+#### `JwtUtilTest` — 9 testes
+
+| Teste | Verifica |
+|---|---|
+| `generateToken_deveRetornarTokenNaoNulo` | Token gerado não é nulo nem vazio |
+| `extractEmail_deveRetornarEmailCorreto` | Email extraído bate com o original |
+| `isValid_tokenValido_deveRetornarTrue` | Token recém-gerado é válido |
+| `isValid_tokenMalformado_deveRetornarFalse` | String aleatória não é válida |
+| `isValid_tokenVazio_deveRetornarFalse` | String vazia retorna false |
+| `isValid_tokenExpirado_deveRetornarFalse` | Token com expiração de 1ms rejeitado após 10ms |
+| `generateRefreshToken_deveRetornarTokenUnicoACadaChamada` | Dois tokens gerados são diferentes |
+| `refreshTokenExpiry_deveSerFuturo` | Instante de expiração está no futuro |
+| `getRefreshExpirationSeconds_deveConverterCorretamente` | 604800000ms → 604800s |
+
+---
+
+#### `RateLimitFilterTest` — 6 testes
+
+| Teste | Verifica |
+|---|---|
+| `requisicoesDentroDoLimite_devemPassar` | 10 requisições passam sem bloqueio |
+| `aoUltrapassarLimite_deveRetornar429` | 11ª requisição retorna HTTP 429 com JSON de erro |
+| `ipsDistintos_temContadoresIndependentes` | Limite de um IP não afeta outro |
+| `endpointNaoAuth_naoDeveSerFiltrado` | `shouldNotFilter` retorna `true` para `/workouts` |
+| `endpointAuth_deveSerFiltrado` | `shouldNotFilter` retorna `false` para `/auth/login` |
+| `xForwardedFor_usaPrimeiroIp` | IP extraído do header `X-Forwarded-For` (proxy) |
+
+---
+
+#### `AuthServiceTest` — 9 testes
+
+| Teste | Verifica |
+|---|---|
+| `register_emailNovo_deveSalvarERetornarTokens` | Registro bem-sucedido retorna access + refresh token |
+| `register_emailJaCadastrado_deveLancarIllegalArgument` | Email duplicado lança exceção |
+| `login_credenciaisCorretas_deveRetornarTokens` | Login válido retorna tokens |
+| `login_emailNaoEncontrado_deveLancarBadCredentials` | Email inexistente lança exceção |
+| `login_senhaErrada_deveLancarBadCredentials` | Senha incorreta lança exceção |
+| `refresh_tokenValido_deveEmitirNovoPar` | Refresh token válido emite novo par |
+| `refresh_tokenInexistente_deveLancarBadCredentials` | Token não encontrado lança exceção |
+| `refresh_tokenExpirado_deveLancarBadCredentialsEInvalidarToken` | Token expirado invalida o campo no banco e lança exceção |
+
+---
+
+#### `WorkoutServiceTest` — 13 testes
+
+| Teste | Verifica |
+|---|---|
+| `listByUser_deveRetornarTreinosDoUsuario` | Lista retorna treinos do email |
+| `listByUser_semTreinos_deveRetornarListaVazia` | Lista vazia sem treinos |
+| `getById_treinoExistente_deveRetornarDto` | Busca por ID retorna DTO correto |
+| `getById_treinoNaoEncontrado_deveLancarIllegalArgument` | ID inexistente lança exceção |
+| `create_dadosValidos_deveSalvarERetornarDto` | Criação persiste e retorna DTO |
+| `create_usuarioNaoEncontrado_deveLancarIllegalArgument` | Email inválido lança exceção |
+| `delete_treinoDoUsuario_deveDeletar` | Deleção chama `workoutRepository.delete` |
+| `delete_treinoNaoEncontrado_deveLancarIllegalArgument` | ID inválido lança exceção |
+| `listByUser_totalSets_deveSerCalculadoCorretamente` | `totalSets` = soma de séries |
+| `listByUser_volume_deveSerCalculadoCorretamente` | `volume` = peso × reps (600.0) |
+| `listByUser_duration_deveSerTotalSetsVezes3` | `duration` = séries × 3 minutos |
+| `saveSession_seriesConcluidas_deveCalcularVolumeEAtualizarPrev` | Volume calculado corretamente e `prev` atualizado com peso anterior |
+| `saveSession_treinoNaoEncontrado_deveLancarIllegalArgument` | Lança exceção se treino não existe |
+| `saveSession_setIndexForaDosLimites_deveIgnorar` | Índice inválido é ignorado silenciosamente |
+| `getProgress_semTreinos_deveRetornarZeros` | Sem treinos retorna zeros |
+| `getProgress_comSeriesConcluidas_deveAcumularVolume` | Volume acumulado de séries concluídas |
+
+---
+
+#### `GlobalExceptionHandlerTest` — 5 testes
+
+| Teste | Verifica |
+|---|---|
+| `illegalArgument_deveRetornar400ComMensagem` | HTTP 400 com campo `error` |
+| `badCredentials_deveRetornar401` | HTTP 401 com campo `error` |
+| `validationException_deveRetornar400ComCamposInvalidos` | HTTP 400 com `fields` contendo erros por campo |
+| `genericException_deveRetornar500` | HTTP 500 com mensagem genérica |
+| `validationException_camposDuplicados_mantemPrimeiraMensagem` | Campos duplicados mantêm a primeira mensagem |
+
+---
+
+#### Estratégia de teste adotada
+
+- **Sem banco de dados**: todos os testes usam Mockito para isolar repositórios
+- **Sem contexto Spring**: `@ExtendWith(MockitoExtension.class)` — testes rápidos e sem dependências externas
+- **`GlobalExceptionHandler`**: testado diretamente (instância real + Mockito para `MethodArgumentNotValidException`)
+- **`RateLimitFilter`**: testado com `MockHttpServletRequest/Response` do Spring Test
+
+---
+
 ## [Não publicado] — 2026-05-21 (sessão 2)
 
 ### Problemas de alta prioridade — Flyway, Rate Limiting e Refresh Token
