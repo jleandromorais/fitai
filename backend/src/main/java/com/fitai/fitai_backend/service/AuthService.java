@@ -3,6 +3,7 @@ package com.fitai.fitai_backend.service;
 import com.fitai.fitai_backend.dto.AuthResponse;
 import com.fitai.fitai_backend.dto.GoogleAuthRequest;
 import com.fitai.fitai_backend.dto.LoginRequest;
+import com.fitai.fitai_backend.dto.RefreshRequest;
 import com.fitai.fitai_backend.dto.RegisterRequest;
 import com.fitai.fitai_backend.model.User;
 import com.fitai.fitai_backend.repository.UserRepository;
@@ -13,16 +14,18 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-@Service 
-@RequiredArgsConstructor    
+import java.time.Instant;
 
+@Service
+@RequiredArgsConstructor
 public class AuthService {
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final GoogleTokenVerifier googleTokenVerifier;
 
-    public AuthResponse register(RegisterRequest request){
+    public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("Email já cadastrado.");
         }
@@ -34,12 +37,10 @@ public class AuthService {
                 .build();
 
         userRepository.save(user);
-
-        String token = jwtUtil.generateToken(user.getEmail());
-        return new AuthResponse(token, user.getName(), user.getEmail());
+        return buildAuthResponse(user);
     }
 
-    public AuthResponse login(LoginRequest request){
+    public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadCredentialsException("Credenciais inválidas."));
 
@@ -47,19 +48,16 @@ public class AuthService {
             throw new BadCredentialsException("Credenciais inválidas.");
         }
 
-        String token = jwtUtil.generateToken(user.getEmail());
-        return new AuthResponse(token, user.getName(), user.getEmail());
+        return buildAuthResponse(user);
     }
 
     public AuthResponse loginWithGoogle(GoogleAuthRequest request) {
-        // Valida o idToken com o Google e extrai os dados do usuário
         GoogleIdToken.Payload payload = googleTokenVerifier.verify(request.getIdToken());
 
         String googleId = payload.getSubject();
         String email = payload.getEmail();
         String name = (String) payload.get("name");
 
-        // Busca usuário existente pelo googleId ou pelo email, ou cria um novo
         User user = userRepository.findByGoogleId(googleId)
                 .or(() -> userRepository.findByEmail(email))
                 .orElseGet(() -> userRepository.save(
@@ -70,13 +68,38 @@ public class AuthService {
                                 .build()
                 ));
 
-        // Se o usuário já existia pelo email mas ainda não tem googleId vinculado, vincula agora
         if (user.getGoogleId() == null) {
             user.setGoogleId(googleId);
-            userRepository.save(user);
         }
 
-        String token = jwtUtil.generateToken(user.getEmail());
-        return new AuthResponse(token, user.getName(), user.getEmail());
+        return buildAuthResponse(user);
+    }
+
+    public AuthResponse refresh(RefreshRequest request) {
+        // Busca o usuário pelo refresh token armazenado
+        User user = userRepository.findByRefreshToken(request.getRefreshToken())
+                .orElseThrow(() -> new BadCredentialsException("Refresh token inválido."));
+
+        if (user.getRefreshTokenExpiry() == null || Instant.now().isAfter(user.getRefreshTokenExpiry())) {
+            // Invalida o token expirado para forçar novo login
+            user.setRefreshToken(null);
+            user.setRefreshTokenExpiry(null);
+            userRepository.save(user);
+            throw new BadCredentialsException("Refresh token expirado. Faça login novamente.");
+        }
+
+        return buildAuthResponse(user);
+    }
+
+    // Gera access token + refresh token, persiste o refresh e retorna o AuthResponse
+    private AuthResponse buildAuthResponse(User user) {
+        String accessToken = jwtUtil.generateToken(user.getEmail());
+        String refreshToken = jwtUtil.generateRefreshToken();
+
+        user.setRefreshToken(refreshToken);
+        user.setRefreshTokenExpiry(jwtUtil.refreshTokenExpiry());
+        userRepository.save(user);
+
+        return new AuthResponse(accessToken, refreshToken, user.getName(), user.getEmail());
     }
 }
