@@ -73,8 +73,9 @@ public class JwtUtil {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
             return true;
-        } catch (JwtException e) {
-            // Token inválido por qualquer motivo — não relança para não vazar detalhes internos
+        } catch (JwtException | IllegalArgumentException e) {
+            // JwtException: expirado, assinatura inválida, malformado
+            // IllegalArgumentException: token nulo ou vazio
             return false;
         }
     }
