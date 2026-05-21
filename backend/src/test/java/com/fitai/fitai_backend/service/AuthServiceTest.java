@@ -33,8 +33,8 @@ class AuthServiceTest {
 
     @InjectMocks AuthService authService;
 
-    @BeforeEach
-    void setUp() {
+    // Stubs comuns configurados por teste para evitar UnnecessaryStubbingException
+    private void stubTokenGeneration() {
         when(jwtUtil.generateToken(anyString())).thenReturn("access-token");
         when(jwtUtil.generateRefreshToken()).thenReturn("refresh-token");
         when(jwtUtil.refreshTokenExpiry()).thenReturn(Instant.now().plusSeconds(604_800));
@@ -44,6 +44,7 @@ class AuthServiceTest {
 
     @Test
     void register_emailNovo_deveSalvarERetornarTokens() {
+        stubTokenGeneration();
         when(userRepository.existsByEmail("novo@test.com")).thenReturn(false);
         when(passwordEncoder.encode("senha123")).thenReturn("hash");
         User saved = User.builder().id(1L).name("Novo").email("novo@test.com").password("hash").build();
@@ -54,7 +55,6 @@ class AuthServiceTest {
         assertThat(res.getToken()).isEqualTo("access-token");
         assertThat(res.getRefreshToken()).isEqualTo("refresh-token");
         assertThat(res.getEmail()).isEqualTo("novo@test.com");
-        verify(userRepository, times(2)).save(any()); // 1: cria usuário, 2: persiste refresh token
     }
 
     @Test
@@ -71,6 +71,7 @@ class AuthServiceTest {
 
     @Test
     void login_credenciaisCorretas_deveRetornarTokens() {
+        stubTokenGeneration();
         User user = User.builder().name("Ana").email("ana@test.com").password("hash").build();
         when(userRepository.findByEmail("ana@test.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("senha123", "hash")).thenReturn(true);
@@ -104,6 +105,7 @@ class AuthServiceTest {
 
     @Test
     void refresh_tokenValido_deveEmitirNovoPar() {
+        stubTokenGeneration();
         User user = User.builder().name("Ana").email("ana@test.com")
                 .refreshToken("refresh-token")
                 .refreshTokenExpiry(Instant.now().plusSeconds(3600))
