@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 // Componente Spring responsável por gerar, validar e extrair informações de tokens JWT
@@ -21,10 +22,8 @@ public class JwtUtil {
     public JwtUtil(
             @Value("${jwt.secret}") String secret,         // Segredo injetado do application.properties
             @Value("${jwt.expiration}") long expiration) { // Expiração injetada do application.properties
-        // ATENÇÃO: secret.getBytes() usa o charset padrão da JVM.
-        // Prefira secret.getBytes(StandardCharsets.UTF_8) para garantir consistência entre ambientes.
         // A chave deve ter no mínimo 32 caracteres para HMAC-SHA256.
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
     }
 
