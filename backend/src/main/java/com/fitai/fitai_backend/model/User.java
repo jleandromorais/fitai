@@ -35,4 +35,10 @@ public class User {
 
     @Column(nullable = true)
     private Instant refreshTokenExpiry;
+
+    @Column(nullable = true, length = 512)
+    private String resetToken;
+
+    @Column(nullable = true)
+    private Instant resetTokenExpiry;
 }
