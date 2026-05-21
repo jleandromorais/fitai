@@ -38,6 +38,10 @@ dependencies {
 
 	// Google OAuth2 - validação de ID token
 	implementation 'com.google.api-client:google-api-client:2.2.0'
+
+	// Flyway — migrations de banco de dados versionadas
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
 }
 
 tasks.named('test') {
