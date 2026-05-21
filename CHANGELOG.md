@@ -4,6 +4,68 @@ Documentação de todas as alterações realizadas no projeto, organizadas por c
 
 ---
 
+## [Não publicado] — 2026-05-21 (sessão 6)
+
+### Progresso real, busca de treinos e reset de senha
+
+---
+
+#### 1. Dados de progresso reais no dashboard
+
+**`frontend/app/(dashboard)/page.tsx`**
+- `useProgress()` agora é chamado no dashboard
+- `buildVolumeSparkline()` usa `volumePerWorkout` reais da API quando há 3+ sessões gravadas
+- `totalVolume` e `totalSets` nos cards prioritizam os dados do endpoint `/workouts/progress` (que inclui séries marcadas como feitas) em vez dos campos calculados do `WorkoutDto`
+- Fallback para estimativa quando não há sessões gravadas ainda
+
+---
+
+#### 2. Busca de treinos
+
+**`frontend/app/(dashboard)/treinos/page.tsx`**
+- Campo de busca adicionado acima dos filtros de tag
+- Busca por nome do treino, nome de exercício ou tag — em tempo real (sem requisição ao backend)
+- Botão `X` para limpar a busca rapidamente
+- Estado vazio específico quando a busca não encontra resultados, com botão "Limpar filtros"
+
+---
+
+#### 3. Reset de senha
+
+**Backend**
+
+`V3__add_password_reset_token.sql` *(novo)* — adiciona `reset_token` e `reset_token_expiry` na tabela `useres`
+
+`User.java` — campos `resetToken` e `resetTokenExpiry` adicionados ao modelo
+
+`ForgotPasswordRequest.java` *(novo)* — DTO com campo `email` validado
+
+`ResetPasswordRequest.java` *(novo)* — DTO com campos `token` e `newPassword` (mín. 6 chars)
+
+`UserRepository.java` — método `findByResetToken(String)` adicionado
+
+`AuthService.java` — dois novos métodos:
+- `forgotPassword()`: gera token opaco aleatório (48 bytes), armazena hash no banco com expiração de 30 minutos, retorna o token na resposta. Em produção o token seria enviado por e-mail; nesta implementação é retornado diretamente pois o projeto não tem SMTP configurado.
+- `resetPassword()`: valida token e expiração, atualiza a senha com BCrypt, invalida o token
+
+`AuthController.java` — dois novos endpoints:
+```
+POST /auth/forgot-password  { "email": "..." }       → { "resetToken": "..." }
+POST /auth/reset-password   { "token": "...", "newPassword": "..." } → { "message": "..." }
+```
+
+**Frontend**
+
+`frontend/app/(auth)/reset-senha/page.tsx` *(novo)* — fluxo de 2 etapas:
+1. **Etapa 1 (forgot)**: campo de e-mail → chama `POST /auth/forgot-password` → avança para etapa 2 com o token
+2. **Etapa 2 (reset)**: campos de nova senha e confirmação → chama `POST /auth/reset-password` → redireciona para `/login` após sucesso
+- Validação com `validateEmail` e `validatePassword` da `lib/validation.ts`
+- Aceita `?token=...` na URL (preparado para links de e-mail futuros)
+
+`frontend/app/(auth)/login/page.tsx` — botão "Esqueci a senha" agora navega para `/reset-senha`
+
+---
+
 ## [Não publicado] — 2026-05-21 (sessão 5)
 
 ### Refatoração dos modais de treino — eliminação de duplicação

@@ -182,7 +182,7 @@ function LoginForm() {
               </div>
               {tab === "entrar" && (
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <button style={{ fontSize: 12, color: "var(--text-mute)", background: "none", border: "none", cursor: "pointer" }}>
+                  <button onClick={() => router.push("/reset-senha")} style={{ fontSize: 12, color: "var(--text-mute)", background: "none", border: "none", cursor: "pointer" }}>
                     Esqueci a senha
                   </button>
                 </div>

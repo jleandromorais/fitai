@@ -5,6 +5,7 @@ import { Search, Bell, Play, Timer, Dumbbell, Target, Sparkles, Trophy, Trending
 import { Sparkline } from "@/components/ui/Charts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkouts } from "@/hooks/useWorkouts";
+import { useProgress } from "@/hooks/useProgress";
 import { useMemo } from "react";
 import type { Workout } from "@/hooks/useWorkouts";
 
@@ -34,13 +35,12 @@ function calcMuscleDistribution(workouts: Workout[]) {
     .map(([label, count]) => ({ label, value: Math.round((count / total) * 100) }));
 }
 
-function buildVolumeSparkline(totalVolume: number): number[] {
+function buildVolumeSparkline(volumePerWorkout: number[], totalVolume: number): number[] {
+  // Usa os volumes reais dos treinos se disponíveis
+  if (volumePerWorkout.length >= 3) return volumePerWorkout.slice(-12);
+  // Fallback: gera estimativa baseada no volume total quando não há sessões
   const base = totalVolume || 1000;
-  return Array.from({ length: 12 }, (_, i) => {
-    const factor = 0.7 + (i / 11) * 0.3;
-    const noise = 1 + (Math.random() * 0.3 - 0.15);
-    return Math.round(base * factor * noise);
-  });
+  return Array.from({ length: 8 }, (_, i) => Math.round(base * (0.7 + (i / 7) * 0.3)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,18 +52,19 @@ export default function Dashboard() {
   const firstName = user?.name?.split(" ")[0] ?? "atleta";
 
   const { workouts, loading, error } = useWorkouts();
+  const { data: progress } = useProgress();
 
   const stats = useMemo(() => {
     if (workouts.length === 0) return null;
 
-    const totalVolume = workouts.reduce((sum, w) => sum + (w.volume ?? 0), 0);
-    const totalSets = workouts.reduce((sum, w) => sum + (w.totalSets ?? 0), 0);
-    const featured = [...workouts].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
+    const totalVolume = progress?.totalVolume ?? workouts.reduce((sum, w) => sum + (w.volume ?? 0), 0);
+    const totalSets   = progress?.totalSetsCompleted ?? workouts.reduce((sum, w) => sum + (w.totalSets ?? 0), 0);
+    const featured    = [...workouts].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
     const muscleDistribution = calcMuscleDistribution(workouts);
-    const volumeSparkline = buildVolumeSparkline(totalVolume);
+    const volumeSparkline    = buildVolumeSparkline(progress?.volumePerWorkout ?? [], totalVolume);
 
     return { totalVolume, totalSets, featured, muscleDistribution, volumeSparkline };
-  }, [workouts]);
+  }, [workouts, progress]);
 
   if (loading) {
     return (
