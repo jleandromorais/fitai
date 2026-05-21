@@ -4,12 +4,12 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GoogleLogin } from "@react-oauth/google";
 
-const API = "http://localhost:8081";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
-function saveSession(data: { token: string; name: string; email: string }) {
+function saveSession(data: { token: string; refreshToken: string; name: string; email: string }) {
   localStorage.setItem("token", data.token);
+  localStorage.setItem("refreshToken", data.refreshToken);
   localStorage.setItem("user", JSON.stringify({ name: data.name, email: data.email }));
-  // Cookie lido pelo middleware (sem httpOnly pois é client-side)
   document.cookie = `token=${data.token}; path=/; max-age=${60 * 60 * 24}; SameSite=Strict`;
 }
 
