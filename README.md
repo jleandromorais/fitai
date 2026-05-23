@@ -10,27 +10,32 @@ FitAI é uma aplicação web completa para gestão e acompanhamento de treinos f
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | Next.js 16 · TypeScript · Tailwind CSS |
-| Backend | Spring Boot · Java 21 · Spring Security · JWT |
-| Base de dados | PostgreSQL 17 |
-| Autenticação | JWT + Google OAuth2 |
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 |
+| Backend | Spring Boot 4 · Java 21 · Spring Security · JWT |
+| Base de dados | PostgreSQL 17/18 |
+| Migrations | Flyway |
+| Autenticação | JWT (access + refresh) + Google OAuth2 |
 | IA | Gemini API (Google AI Studio) |
+| Testes | Vitest + Testing Library (frontend) · JUnit 5 (backend) |
+| Deploy | Vercel (frontend) · Render (backend + Postgres) |
 
 ---
 
 ## Funcionalidades
 
-- **Autenticação** — registo/login com email e password ou Google OAuth2
+- **Autenticação** — registo/login com email e password ou Google OAuth2, com refresh token e recuperação de password por email
 - **Splits de treino** — criação por divisão muscular: Push/Pull/Legs, Upper/Lower, ABC, ABCD, Full Body ou personalizado
 - **Duplicação de blocos** — Upper 1 / Upper 2, Lower 1 / Lower 2 com dias diferentes
 - **Catálogo de exercícios** — 57 exercícios pré-definidos organizados por 9 grupos musculares, com dicas de execução, séries, reps e descanso padrão
+- **Pesquisa de exercícios** — filtro por nome ou grupo muscular ao adicionar exercícios ao treino
 - **Execução de treino** — modo sessão ao vivo com timer de descanso automático, cronómetro, peso e reps editáveis por série, e volume calculado em tempo real
 - **Histórico de carga** — cada sessão grava o peso executado e move o anterior para `prev`, permitindo comparação com a sessão anterior
-- **Progresso** — gráficos de evolução de carga por exercício, volume por treino e recordes pessoais
+- **Progresso real** — gráficos de evolução de carga por exercício, volume por treino e recordes pessoais, alimentados pelos dados das sessões guardadas
 - **Calendário** — visualização mensal dos dias com treino programado por divisão
 - **IA** — geração de planos de treino personalizados via Gemini API com base no nível, objetivo, dias disponíveis e equipamento
 - **Dashboard** — visão geral com treino em destaque, stats ao vivo e distribuição muscular
 - **Proteção de rotas** — middleware que redireciona utilizadores não autenticados para o login
+- **Rate limiting** — filtro de proteção contra abuso nos endpoints de autenticação
 
 ---
 
@@ -38,37 +43,43 @@ FitAI é uma aplicação web completa para gestão e acompanhamento de treinos f
 
 ```
 FitAI/
-├── frontend/               # Next.js 16
+├── frontend/                       # Next.js 16
 │   ├── app/
-│   │   ├── (auth)/login/   # Página de login e registo
-│   │   └── (dashboard)/    # Área autenticada
-│   │       ├── page.tsx         # Dashboard
-│   │       ├── treinos/         # Lista e detalhe/execução de treinos
-│   │       ├── progresso/       # Evolução de carga e volume
-│   │       ├── calendario/      # Histórico mensal
-│   │       ├── ai-gen/          # Gerador de treinos com IA
-│   │       └── perfil/          # Dados do utilizador
+│   │   ├── (auth)/login/           # Login, registo, recuperação de password
+│   │   └── (dashboard)/            # Área autenticada
+│   │       ├── page.tsx                # Dashboard
+│   │       ├── treinos/                # Lista e detalhe/execução de treinos
+│   │       ├── progresso/              # Evolução de carga e volume
+│   │       ├── calendario/             # Histórico mensal
+│   │       ├── ai-gen/                 # Gerador de treinos com IA
+│   │       └── perfil/                 # Dados do utilizador
 │   ├── components/
-│   │   ├── NovoTreinoModal.tsx  # Wizard de criação de treino por split
+│   │   ├── NovoTreinoModal.tsx         # Wizard de criação de treino por split
 │   │   ├── EditarTreinoModal.tsx
 │   │   ├── GoogleProvider.tsx
-│   │   └── ui/Charts.tsx        # LineChart, BarChart, Sparkline
+│   │   └── ui/Charts.tsx               # LineChart, BarChart, Sparkline
 │   ├── hooks/
 │   │   ├── useWorkouts.ts
 │   │   └── useProgress.ts
 │   ├── lib/
-│   │   ├── api.ts               # Cliente HTTP com JWT
-│   │   └── exercises.ts         # Catálogo de 57 exercícios
-│   └── proxy.ts                 # Middleware de protecção de rotas
+│   │   ├── api.ts                      # Cliente HTTP com JWT
+│   │   └── exercises.ts                # Catálogo de 57 exercícios
+│   └── proxy.ts                        # Middleware de proteção de rotas
 │
-└── backend/                # Spring Boot
-    └── src/main/java/com/fitai/fitai_backend/
-        ├── controller/     # AuthController, WorkoutController
-        ├── service/        # AuthService, WorkoutService, GoogleTokenVerifier
-        ├── model/          # User, Workout, Exercise, SetData
-        ├── dto/            # Request/Response DTOs
-        ├── security/       # JwtFilter, JwtUtil, UserDetailsServiceImpl
-        └── config/         # SecurityConfig (CORS, JWT, BCrypt)
+└── backend/                        # Spring Boot
+    ├── Dockerfile                      # Multi-stage build para deploy
+    ├── DEPLOY.md                       # Guia de deploy no Render
+    └── src/main/
+        ├── java/com/fitai/fitai_backend/
+        │   ├── controller/             # AuthController, WorkoutController
+        │   ├── service/                # AuthService, WorkoutService, GoogleTokenVerifier
+        │   ├── model/                  # User, Workout, Exercise, SetData
+        │   ├── dto/                    # Request/Response DTOs
+        │   ├── security/               # JwtFilter, JwtUtil, RateLimitFilter, UserDetailsServiceImpl
+        │   └── config/                 # SecurityConfig (CORS, JWT, BCrypt)
+        └── resources/
+            ├── application.properties  # Configuração com variáveis de ambiente
+            └── db/migration/           # Migrations Flyway versionadas
 ```
 
 ---
@@ -77,11 +88,11 @@ FitAI/
 
 - Node.js 20+
 - Java 21+
-- PostgreSQL 17 a correr na porta 5432
+- PostgreSQL 17+ a correr na porta 5432
 
 ---
 
-## Configuração e arranque
+## Configuração e arranque local
 
 ### 1. Base de dados
 
@@ -91,6 +102,8 @@ Cria a base de dados no PostgreSQL:
 CREATE DATABASE fitai;
 ```
 
+O schema é criado automaticamente pelo Flyway no primeiro arranque do backend.
+
 ### 2. Backend
 
 ```bash
@@ -99,12 +112,14 @@ cd backend
 # API disponível em http://localhost:8081
 ```
 
-O backend usa `src/main/resources/application.properties`. Confirma que as credenciais do PostgreSQL estão correctas:
+Variáveis de ambiente esperadas (com defaults para desenvolvimento):
 
 ```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/fitai
-spring.datasource.username=postgres
-spring.datasource.password=postgres
+DB_URL=jdbc:postgresql://localhost:5432/fitai
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+JWT_SECRET=<segredo de pelo menos 256 bits>
+GOOGLE_CLIENT_ID=<client id do Google Cloud>
 ```
 
 ### 3. Frontend
@@ -119,8 +134,29 @@ npm run dev
 Cria o ficheiro `frontend/.env.local`:
 
 ```env
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=o_teu_google_client_id
-NEXT_PUBLIC_GEMINI_API_KEY=a_tua_gemini_api_key
+NEXT_PUBLIC_API_URL=http://localhost:8081
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=<o teu Google Client ID>
+NEXT_PUBLIC_GEMINI_API_KEY=<a tua Gemini API Key>
+```
+
+---
+
+## Testes
+
+### Frontend
+
+```bash
+cd frontend
+npm test                  # uma execução
+npm run test:watch        # modo watch
+npm run test:coverage     # com cobertura
+```
+
+### Backend
+
+```bash
+cd backend
+./gradlew test
 ```
 
 ---
@@ -134,6 +170,9 @@ NEXT_PUBLIC_GEMINI_API_KEY=a_tua_gemini_api_key
 | POST | `/auth/register` | Criar conta com email e password |
 | POST | `/auth/login` | Login com email e password |
 | POST | `/auth/google` | Login com Google OAuth2 |
+| POST | `/auth/refresh` | Trocar refresh token por novo access token |
+| POST | `/auth/forgot-password` | Solicitar email de recuperação |
+| POST | `/auth/reset-password` | Definir nova password com token recebido |
 
 ### Treinos
 
@@ -143,7 +182,7 @@ NEXT_PUBLIC_GEMINI_API_KEY=a_tua_gemini_api_key
 | POST | `/workouts` | Criar treino |
 | GET | `/workouts/progress` | Evolução de carga e volume por exercício |
 | GET | `/workouts/{id}` | Buscar treino por ID |
-| PUT | `/workouts/{id}` | Actualizar treino |
+| PUT | `/workouts/{id}` | Atualizar treino |
 | DELETE | `/workouts/{id}` | Eliminar treino |
 | POST | `/workouts/{id}/session` | Guardar dados de uma sessão executada |
 
@@ -173,7 +212,7 @@ Backend (WorkoutService.saveSession)
         │
         ▼
 GET /workouts/progress
-  - Lê weight (actual) e prev (anterior) de cada SetData
+  - Lê weight (atual) e prev (anterior) de cada SetData
   - Calcula delta de carga por exercício
   - Devolve stats para os gráficos de evolução
 ```
@@ -189,24 +228,61 @@ User
       └── Exercise (N)
            ├── name, muscle, restSeconds
            └── SetData (N)
-                ├── reps, weight   ← valor actual (planeado ou executado)
+                ├── reps, weight   ← valor atual (planeado ou executado)
                 ├── prev           ← peso da sessão anterior
                 └── done           ← true se foi executada na última sessão
 ```
+
+O schema é gerido pelo **Flyway**. As migrations estão em [backend/src/main/resources/db/migration/](backend/src/main/resources/db/migration/) e correm automaticamente no arranque do backend.
+
+---
+
+## Deploy
+
+### Backend — Render
+
+Guia completo em [backend/DEPLOY.md](backend/DEPLOY.md). Em resumo:
+
+1. Cria um **PostgreSQL** gratuito no Render
+2. Cria um **Web Service** ligado ao repositório com:
+   - Root directory: `backend`
+   - Runtime: `Docker`
+3. Define as variáveis de ambiente abaixo
+4. O Render constrói via `Dockerfile` e expõe a API em `https://fitai-backend.onrender.com`
+
+> **Importante:** o Render fornece o `DB_URL` no formato `postgres://...`. O Spring Boot precisa de `jdbc:postgresql://...` — converte antes de colar.
+
+### Frontend — Vercel
+
+1. Importa o repositório na Vercel
+2. Define o **Root Directory** como `frontend`
+3. Configura as variáveis de ambiente (incluindo `NEXT_PUBLIC_API_URL` apontando para o backend no Render)
+4. Cada push para `main` dispara um novo deploy automaticamente
 
 ---
 
 ## Variáveis de ambiente — produção
 
+### Backend (Render)
+
 | Variável | Descrição |
 |---|---|
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Client ID do Google Cloud Console |
+| `DB_URL` | URL JDBC do PostgreSQL (`jdbc:postgresql://...`) |
+| `DB_USERNAME` | Utilizador da base de dados |
+| `DB_PASSWORD` | Password da base de dados |
+| `JWT_SECRET` | Segredo para assinar tokens JWT (mínimo 256 bits) |
+| `JWT_EXPIRATION` | Validade do access token em ms (default `86400000` = 24h) |
+| `JWT_REFRESH_EXPIRATION` | Validade do refresh token em ms (default `604800000` = 7 dias) |
+| `GOOGLE_CLIENT_ID` | Client ID do Google Cloud Console |
+| `CORS_ALLOWED_ORIGINS` | URLs permitidas separadas por vírgula |
+
+### Frontend (Vercel)
+
+| Variável | Descrição |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | URL pública do backend |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Client ID do Google (mesmo valor do backend) |
 | `NEXT_PUBLIC_GEMINI_API_KEY` | API Key do Google AI Studio |
-| `spring.datasource.url` | URL de ligação ao PostgreSQL |
-| `spring.datasource.username` | Utilizador da base de dados |
-| `spring.datasource.password` | Password da base de dados |
-| `jwt.secret` | Segredo para assinar os tokens JWT (mínimo 256 bits) |
-| `google.client-id` | Client ID do Google (mesmo valor que o frontend) |
 
 ---
 

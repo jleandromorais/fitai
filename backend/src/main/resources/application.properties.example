@@ -1,0 +1,27 @@
+spring.application.name=fitai-backend
+server.port=8081
+
+# Banco de dados
+spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/fitai}
+spring.datasource.username=${DB_USERNAME:postgres}
+spring.datasource.password=${DB_PASSWORD}
+
+# Flyway gerencia o schema — ddl-auto=validate apenas confere que o schema bate com as entidades
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.show-sql=true
+
+# Flyway
+spring.flyway.enabled=true
+spring.flyway.locations=classpath:db/migration
+
+# JWT — gere uma chave segura com: openssl rand -base64 64
+jwt.secret=${JWT_SECRET}
+jwt.expiration=${JWT_EXPIRATION:86400000}
+# Refresh token expira em 7 dias por padrão (604800000 ms)
+jwt.refresh-expiration=${JWT_REFRESH_EXPIRATION:604800000}
+
+# Google OAuth2 — obtenha em console.cloud.google.com
+google.client-id=${GOOGLE_CLIENT_ID}
+
+# CORS — origens permitidas separadas por vírgula
+cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:3002,https://fit-ai-theta-eight.vercel.app}

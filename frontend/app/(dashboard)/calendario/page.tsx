@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Dumbbell } from "lucide-react";
+import { ChevronLeft, ChevronRight, Dumbbell } from "lucide-react";
 import { useWorkouts } from "@/hooks/useWorkouts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,15 +52,17 @@ function firstDayOfMonth(year: number, month: number): number {
 export default function CalendarioPage() {
   const { workouts, loading } = useWorkouts();
 
-  // Mês actual fixo (Maio 2026 — quando houver navegação, tornar estado)
-  const now   = new Date(2026, 4, 1); // Maio 2026 (mês 4 = Maio)
-  const year  = now.getFullYear();
-  const month = now.getMonth();
+  // Navegação de mês
+  const [mesOffset, setMesOffset] = useState(0);
+  const baseDate = new Date();
+  baseDate.setDate(1);
+  baseDate.setMonth(baseDate.getMonth() + mesOffset);
+  const year  = baseDate.getFullYear();
+  const month = baseDate.getMonth();
 
   // ── Construir mapa de dias treinados ──────────────────────────────────────
   // Usa o campo `schedule` de cada treino para marcar os dias da semana
   // que têm treino programado e os mapeia para o mês actual.
-  // Quando o backend guardar sessões executadas, substitui por dados reais.
   const trainedDays = useMemo(() => {
     const map: Record<number, { code: string; name: string; id: number }> = {};
     const total = daysInMonth(year, month);
@@ -88,7 +90,7 @@ export default function CalendarioPage() {
 
   // ── Stats derivadas ────────────────────────────────────────────────────────
   const trainedCount = Object.keys(trainedDays).length;
-  const workingDays  = daysInMonth(year, month); // dias úteis no mês
+  const workingDays  = daysInMonth(year, month);
 
   // Volume total de todos os treinos (dado real do backend)
   const totalVolume = workouts.reduce((s, w) => s + (w.volume ?? 0), 0);
@@ -112,6 +114,14 @@ export default function CalendarioPage() {
         <div>
           <h1 className="page-title">Histórico</h1>
           <div className="page-sub">Treinos programados no mês</div>
+        </div>
+        {/* Navegação de mês */}
+        <div className="row gap-2">
+          <button className="icon-btn" onClick={() => setMesOffset(o => o - 1)}><ChevronLeft size={16} /></button>
+          <div className="btn btn-secondary btn-sm" style={{ pointerEvents: "none", textTransform: "capitalize" }}>
+            {formatMonth(baseDate)}
+          </div>
+          <button className="icon-btn" onClick={() => setMesOffset(o => o + 1)}><ChevronRight size={16} /></button>
         </div>
       </div>
 
@@ -151,7 +161,7 @@ export default function CalendarioPage() {
 
         {/* ── Calendário ── */}
         <div className="card">
-          <div className="h-eyebrow" style={{ marginBottom: 16 }}>{formatMonth(now)}</div>
+          <div className="h-eyebrow" style={{ marginBottom: 16 }}>{formatMonth(baseDate)}</div>
 
           {/* Cabeçalho dos dias da semana */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
@@ -175,9 +185,10 @@ export default function CalendarioPage() {
             {Array.from({ length: cells }).map((_, i) => {
               const day = i + 1;
               const trained = trainedDays[day];
-              const isToday = day === new Date().getDate() &&
-                              month === new Date().getMonth() &&
-                              year  === new Date().getFullYear();
+              const today = new Date();
+              const isToday = day === today.getDate() &&
+                              month === today.getMonth() &&
+                              year  === today.getFullYear();
 
               return (
                 <div key={day} style={{
@@ -299,6 +310,8 @@ export default function CalendarioPage() {
           </div>
         </div>
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

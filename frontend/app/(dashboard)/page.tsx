@@ -5,6 +5,7 @@ import { Search, Bell, Play, Timer, Dumbbell, Target, Sparkles, Trophy, Trending
 import { Sparkline } from "@/components/ui/Charts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkouts } from "@/hooks/useWorkouts";
+import { useProgress } from "@/hooks/useProgress";
 import { useMemo } from "react";
 import type { Workout } from "@/hooks/useWorkouts";
 
@@ -12,25 +13,14 @@ import type { Workout } from "@/hooks/useWorkouts";
 // Helpers de cálculo
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Retorna os dias da semana (Seg–Sex) como abreviações,
- * comparando com os dias informados no campo `schedule` do treino.
- * Usado para pintar o checklist semanal no card "treino de hoje".
- */
 const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 
-/**
- * Calcula a distribuição de grupos musculares em percentual
- * a partir de todos os exercícios de todos os treinos.
- * Cada exercício contribui 1 ponto para o seu grupo.
- */
 function calcMuscleDistribution(workouts: Workout[]) {
   const counts: Record<string, number> = {};
   let total = 0;
 
   for (const w of workouts) {
     for (const ex of w.exercises) {
-      // Usa o grupo principal (primeira palavra do campo muscle)
       const group = ex.muscle?.split(" ")?.[0] ?? "Outros";
       counts[group] = (counts[group] ?? 0) + 1;
       total++;
@@ -39,26 +29,18 @@ function calcMuscleDistribution(workouts: Workout[]) {
 
   if (total === 0) return [];
 
-  // Ordena decrescente e pega os 4 maiores grupos
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4)
     .map(([label, count]) => ({ label, value: Math.round((count / total) * 100) }));
 }
 
-/**
- * Gera dados de volume semanal fictícios mas proporcionais ao volume real,
- * para alimentar o Sparkline enquanto não há histórico no backend.
- * Quando o histórico existir, basta substituir por dados reais.
- */
-function buildVolumeSparkline(totalVolume: number): number[] {
-  // Simula 12 semanas com variação de ±15% em torno do volume atual
+function buildVolumeSparkline(volumePerWorkout: number[], totalVolume: number): number[] {
+  // Usa os volumes reais dos treinos se disponíveis
+  if (volumePerWorkout.length >= 3) return volumePerWorkout.slice(-12);
+  // Fallback: gera estimativa baseada no volume total quando não há sessões
   const base = totalVolume || 1000;
-  return Array.from({ length: 12 }, (_, i) => {
-    const factor = 0.7 + (i / 11) * 0.3; // cresce ao longo do tempo
-    const noise = 1 + (Math.random() * 0.3 - 0.15);
-    return Math.round(base * factor * noise);
-  });
+  return Array.from({ length: 8 }, (_, i) => Math.round(base * (0.7 + (i / 7) * 0.3)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,37 +48,23 @@ function buildVolumeSparkline(totalVolume: number): number[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  // Dados do utilizador autenticado (nome, email)
   const { user } = useAuth();
   const firstName = user?.name?.split(" ")[0] ?? "atleta";
 
-  // Busca todos os treinos do utilizador no backend
   const { workouts, loading, error } = useWorkouts();
-
-  // ── Stats derivadas dos treinos reais ──────────────────────────────────────
+  const { data: progress } = useProgress();
 
   const stats = useMemo(() => {
     if (workouts.length === 0) return null;
 
-    // Volume total somado de todos os treinos
-    const totalVolume = workouts.reduce((sum, w) => sum + (w.volume ?? 0), 0);
-
-    // Total de séries em todos os treinos
-    const totalSets = workouts.reduce((sum, w) => sum + (w.totalSets ?? 0), 0);
-
-    // Treino com mais volume — candidato a "treino de hoje"
-    const featured = [...workouts].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
-
-    // Distribuição muscular para o card "Foco da semana"
+    const totalVolume = progress?.totalVolume ?? workouts.reduce((sum, w) => sum + (w.volume ?? 0), 0);
+    const totalSets   = progress?.totalSetsCompleted ?? workouts.reduce((sum, w) => sum + (w.totalSets ?? 0), 0);
+    const featured    = [...workouts].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
     const muscleDistribution = calcMuscleDistribution(workouts);
-
-    // Dados para o sparkline de volume
-    const volumeSparkline = buildVolumeSparkline(totalVolume);
+    const volumeSparkline    = buildVolumeSparkline(progress?.volumePerWorkout ?? [], totalVolume);
 
     return { totalVolume, totalSets, featured, muscleDistribution, volumeSparkline };
-  }, [workouts]);
-
-  // ── Estado de carregamento ─────────────────────────────────────────────────
+  }, [workouts, progress]);
 
   if (loading) {
     return (
@@ -107,12 +75,9 @@ export default function Dashboard() {
     );
   }
 
-  // ── Estado sem treinos cadastrados ─────────────────────────────────────────
-
   if (!loading && (error || workouts.length === 0)) {
     return (
       <div className="anim-up">
-        {/* Cabeçalho sempre visível */}
         <div className="page-head">
           <div>
             <div className="h-eyebrow" style={{ marginBottom: 8 }}>
@@ -127,7 +92,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* CTA para criar o primeiro treino */}
         <div className="card" style={{ textAlign: "center", padding: 60 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🏋️</div>
           <div className="h-display" style={{ fontSize: 22, marginBottom: 8 }}>Nenhum treino cadastrado</div>
@@ -147,15 +111,11 @@ export default function Dashboard() {
     );
   }
 
-  // Desestrutura as stats calculadas (garantido não-nulo aqui)
   const { totalVolume, totalSets, featured, muscleDistribution, volumeSparkline } = stats!;
 
-  // Dias da semana em que o treino em destaque está programado
   const scheduledDays = featured.schedule
     ? featured.schedule.split(/[,·\s]+/).map(d => d.trim()).filter(Boolean)
     : [];
-
-  // ── Render principal ───────────────────────────────────────────────────────
 
   return (
     <div className="anim-up">
@@ -179,51 +139,37 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Cards de stats (linha de 4) ── */}
+      {/* ── Cards de stats ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
-
-        {/* Número de treinos cadastrados */}
         <div className="card">
           <div className="stat-label">Treinos</div>
           <div style={{ marginTop: 10 }}>
             <span className="stat-num">{workouts.length}</span>
             <span className="stat-unit"> planos</span>
           </div>
-          <div style={{ fontSize: 11, marginTop: 6, fontWeight: 600, color: "var(--accent)" }}>
-            ↑ ativos
-          </div>
         </div>
 
-        {/* Volume total acumulado de todos os treinos */}
         <div className="card">
           <div className="stat-label">Volume total</div>
           <div style={{ marginTop: 10 }}>
             <span className="stat-num">
-              {totalVolume >= 1000
-                ? `${(totalVolume / 1000).toFixed(1)}k`
-                : totalVolume.toFixed(0)}
+              {totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume.toFixed(0)}
             </span>
             <span className="stat-unit"> kg</span>
           </div>
-          {/* Sparkline proporcional ao volume real */}
           <div style={{ marginTop: 14, marginLeft: -4 }}>
             <Sparkline data={volumeSparkline} width={220} height={36} />
           </div>
         </div>
 
-        {/* Total de séries em todos os treinos */}
         <div className="card">
           <div className="stat-label">Total de séries</div>
           <div style={{ marginTop: 10 }}>
             <span className="stat-num">{totalSets}</span>
             <span className="stat-unit"> séries</span>
           </div>
-          <div style={{ fontSize: 11, marginTop: 6, fontWeight: 600, color: "var(--accent)" }}>
-            em {workouts.length} treino{workouts.length !== 1 ? "s" : ""}
-          </div>
         </div>
 
-        {/* Média de séries por treino */}
         <div className="card">
           <div className="stat-label">Média / treino</div>
           <div style={{ marginTop: 10 }}>
@@ -232,26 +178,20 @@ export default function Dashboard() {
             </span>
             <span className="stat-unit"> séries</span>
           </div>
-          <div style={{ fontSize: 11, marginTop: 6, fontWeight: 600, color: "var(--accent)" }}>
-            ↑ intensidade
-          </div>
         </div>
       </div>
 
-      {/* ── Grid principal (2 colunas) ── */}
+      {/* ── Grid principal ── */}
       <div className="grid-3">
-
-        {/* ── Coluna esquerda ── */}
+        {/* Coluna esquerda */}
         <div className="col-stack">
 
-          {/* Card hero: treino em destaque (o de maior volume) */}
+          {/* Hero: treino em destaque */}
           <div className="card card-accent" style={{ padding: 28 }}>
             <div className="row gap-4">
               <div style={{ flex: 1 }}>
                 <div className="h-eyebrow" style={{ color: "var(--accent)" }}>Treino em destaque</div>
-                <h2 className="h-display" style={{ fontSize: 36, margin: "12px 0 16px" }}>
-                  {featured.name}
-                </h2>
+                <h2 className="h-display" style={{ fontSize: 36, margin: "12px 0 16px" }}>{featured.name}</h2>
                 <div className="row gap-4" style={{ color: "var(--text-dim)", fontSize: 14, marginBottom: 24 }}>
                   <div className="row gap-2"><Timer size={16} /> {featured.duration} min</div>
                   <div className="row gap-2"><Dumbbell size={16} /> {featured.exercises.length} exercícios</div>
@@ -261,13 +201,11 @@ export default function Dashboard() {
                   <Play size={14} fill="currentColor" /> Começar treino
                 </Link>
               </div>
-
-              {/* Checklist: dias programados vs dias da semana */}
+              {/* Dias programados */}
               <div style={{ width: 200 }}>
                 <div className="h-eyebrow" style={{ marginBottom: 12 }}>Dias programados</div>
                 <div className="col gap-2">
                   {WEEK_DAYS.map(d => {
-                    // Marca o dia como ativo se estiver no schedule do treino
                     const active = scheduledDays.some(sd =>
                       sd.toLowerCase().startsWith(d.toLowerCase().slice(0, 3))
                     );
@@ -292,7 +230,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Lista de todos os treinos do utilizador */}
+          {/* Lista de treinos */}
           <div>
             <div className="row between" style={{ marginBottom: 12 }}>
               <h3 className="h-display" style={{ fontSize: 18 }}>Meus treinos</h3>
@@ -302,21 +240,16 @@ export default function Dashboard() {
               {workouts.slice(0, 4).map(w => (
                 <Link key={w.id} href={`/treinos/${w.id}`} className="card card-tight" style={{ display: "block" }}>
                   <div className="row gap-3">
-                    {/* Código do treino (A, B, C…) */}
                     <div style={{
                       width: 44, height: 44, borderRadius: 11,
                       background: "var(--surface-2)",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--accent)",
-                    }}>
-                      {w.code}
-                    </div>
+                    }}>{w.code}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{w.name}</div>
                       <div style={{ fontSize: 12, color: "var(--text-mute)", marginTop: 2 }}>
-                        {/* Mostra duração estimada, número de exercícios e schedule */}
-                        {w.duration} min · {w.exercises.length} ex
-                        {w.schedule ? ` · ${w.schedule}` : ""}
+                        {w.duration} min · {w.exercises.length} ex{w.schedule ? ` · ${w.schedule}` : ""}
                       </div>
                     </div>
                   </div>
@@ -326,17 +259,15 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Coluna direita ── */}
+        {/* Coluna direita */}
         <div className="col-stack">
-
-          {/* Sugestão da IA (estática por agora — será dinâmica com a Claude API) */}
+          {/* Sugestão da IA */}
           <div className="card card-accent">
             <div className="row gap-2" style={{ marginBottom: 12 }}>
               <Sparkles size={16} color="var(--accent)" />
               <div className="h-eyebrow" style={{ color: "var(--accent)" }}>Sugestão da IA</div>
             </div>
             <div style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 16 }}>
-              {/* Mensagem adaptada ao número de treinos do utilizador */}
               {workouts.length < 3
                 ? "Você tem poucos treinos cadastrados. Que tal deixar a IA montar um plano completo para você?"
                 : `Você tem ${workouts.length} treinos cadastrados. Considere adicionar um dia de recuperação ativa ou mobilidade.`}
@@ -349,7 +280,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Card: treino com maior volume (destaque de carga) */}
+          {/* Maior volume */}
           <div className="card">
             <div className="row between" style={{ marginBottom: 14 }}>
               <div className="h-eyebrow">Maior volume</div>
@@ -360,10 +291,7 @@ export default function Dashboard() {
                 ? `${(featured.volume / 1000).toFixed(1)}k`
                 : featured.volume?.toFixed(0) ?? "–"} kg
             </div>
-            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>
-              {featured.name}
-            </div>
-            {/* Tags do treino */}
+            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>{featured.name}</div>
             {featured.tags?.length > 0 && (
               <div className="row gap-2" style={{ marginTop: 14 }}>
                 {featured.tags.map(t => (
@@ -373,7 +301,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Card: distribuição de grupos musculares */}
+          {/* Foco muscular */}
           <div className="card">
             <div className="h-eyebrow" style={{ marginBottom: 14 }}>Foco muscular</div>
             {muscleDistribution.length > 0 ? (
@@ -391,27 +319,21 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              /* Estado vazio: nenhum exercício cadastrado ainda */
               <p style={{ fontSize: 13, color: "var(--text-mute)" }}>
-                Adicione exercícios aos treinos para ver a distribuição muscular.
+                Adicione exercícios para ver a distribuição muscular.
               </p>
             )}
           </div>
 
-          {/* Card: volume total com sparkline */}
+          {/* Volume trend */}
           <div className="card">
             <div className="row between" style={{ marginBottom: 12 }}>
               <div className="h-eyebrow">Volume acumulado</div>
               <TrendingUp size={16} color="var(--accent)" />
             </div>
             <div className="h-display" style={{ fontSize: 22 }}>
-              {totalVolume >= 1000
-                ? `${(totalVolume / 1000).toFixed(1)}k`
-                : totalVolume.toFixed(0)}
+              {totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume.toFixed(0)}
               <span className="stat-unit"> kg</span>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-mute)", marginTop: 4 }}>
-              em {workouts.length} treino{workouts.length !== 1 ? "s" : ""}
             </div>
             <div style={{ marginTop: 16 }}>
               <Sparkline data={volumeSparkline} width={280} height={48} />

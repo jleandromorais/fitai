@@ -5,25 +5,21 @@ import com.fitai.fitai_backend.model.*;
 import com.fitai.fitai_backend.repository.UserRepository;
 import com.fitai.fitai_backend.repository.WorkoutRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/*
- * Imagina que o WorkoutService é o GARÇOM do restaurante.
- * O cliente (Controller) faz o pedido, o garçom (Service) vai até a cozinha
- * (banco de dados) buscar ou guardar as informações, e traz de volta pro cliente.
- */
-@Service           // Fala pro Spring: "ei, esse é um garçom, guarda ele pra mim"
-@RequiredArgsConstructor // Cria o construtor automaticamente com os ingredientes que precisamos
+@Service
+@RequiredArgsConstructor
 public class WorkoutService {
 
-    // A gaveta onde ficam os treinos no banco de dados
-    private final WorkoutRepository workoutRepository;
+    private static final Logger log = LoggerFactory.getLogger(WorkoutService.class);
 
-    // A gaveta onde ficam os usuários no banco de dados
-    private final UserRepository userRepository;
+    private final WorkoutRepository workoutRepository;
+    private final UserRepository    userRepository;
 
     /*
      * LISTAR TREINOS
@@ -31,10 +27,11 @@ public class WorkoutService {
      * É como pedir: "me mostra todos os cadernos que têm o meu nome na capa"
      */
     public List<WorkoutDto> listByUser(String email) {
-        return workoutRepository.findAllByUserEmail(email)
-                .stream()
-                .map(this::toDto) // Converte cada treino do banco para o formato que o app entende
-                .toList();
+        log.debug("Listando treinos: email={}", email);
+        List<WorkoutDto> result = workoutRepository.findAllByUserEmail(email)
+                .stream().map(this::toDto).toList();
+        log.debug("Treinos encontrados: email={}, total={}", email, result.size());
+        return result;
     }
 
     /*
@@ -44,8 +41,12 @@ public class WorkoutService {
      * Se não achar, grita um erro: "Treino não encontrado!"
      */
     public WorkoutDto getById(Long id, String email) {
+        log.debug("Buscando treino: id={}, email={}", id, email);
         Workout w = workoutRepository.findByIdAndUserEmail(id, email)
-                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+                .orElseThrow(() -> {
+                    log.warn("Treino não encontrado: id={}, email={}", id, email);
+                    return new IllegalArgumentException("Treino não encontrado.");
+                });
         return toDto(w);
     }
 
@@ -57,10 +58,12 @@ public class WorkoutService {
      */
     @Transactional
     public WorkoutDto create(WorkoutRequest req, String email) {
-
-        // Primeiro verifica se o usuário existe. Se não existir, erro.
+        log.info("Criando treino: email={}, nome={}", email, req.getName());
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Usuário não encontrado."));
+                .orElseThrow(() -> {
+                    log.warn("Criação de treino falhou — usuário não encontrado: email={}", email);
+                    return new IllegalArgumentException("Usuário não encontrado.");
+                });
 
         // Monta o treino como uma caixa vazia com nome, código (A/B/C), dias e tags
         Workout workout = Workout.builder()
@@ -103,8 +106,9 @@ public class WorkoutService {
             }
         }
 
-        // Salva tudo no banco e devolve o treino no formato que o app entende
-        return toDto(workoutRepository.save(workout));
+        WorkoutDto dto = toDto(workoutRepository.save(workout));
+        log.info("Treino criado: id={}, email={}", dto.getId(), email);
+        return dto;
     }
 
     /*
@@ -115,9 +119,12 @@ public class WorkoutService {
      */
     @Transactional
     public WorkoutDto update(Long id, WorkoutRequest req, String email) {
-        // Busca o treino garantindo que pertence ao utilizador autenticado
+        log.info("Atualizando treino: id={}, email={}", id, email);
         Workout workout = workoutRepository.findByIdAndUserEmail(id, email)
-                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+                .orElseThrow(() -> {
+                    log.warn("Atualização falhou — treino não encontrado: id={}, email={}", id, email);
+                    return new IllegalArgumentException("Treino não encontrado.");
+                });
 
         // Atualiza os campos simples
         workout.setName(req.getName());
@@ -154,7 +161,9 @@ public class WorkoutService {
             }
         }
 
-        return toDto(workoutRepository.save(workout));
+        WorkoutDto updated = toDto(workoutRepository.save(workout));
+        log.info("Treino atualizado: id={}, email={}", id, email);
+        return updated;
     }
 
     /*
@@ -171,8 +180,12 @@ public class WorkoutService {
      */
     @Transactional
     public SessionResponse saveSession(Long workoutId, SessionRequest req, String email) {
+        log.info("Salvando sessão: workoutId={}, email={}", workoutId, email);
         Workout workout = workoutRepository.findByIdAndUserEmail(workoutId, email)
-                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+                .orElseThrow(() -> {
+                    log.warn("Sessão falhou — treino não encontrado: id={}, email={}", workoutId, email);
+                    return new IllegalArgumentException("Treino não encontrado.");
+                });
 
         int setsCompleted = 0;
         double totalVolume = 0.0;
@@ -217,8 +230,10 @@ public class WorkoutService {
 
         workoutRepository.save(workout);
 
-        return new SessionResponse(setsCompleted, totalVolume,
+        SessionResponse response = new SessionResponse(setsCompleted, totalVolume,
                 req.getDurationMinutes() != null ? req.getDurationMinutes() : 0);
+        log.info("Sessão salva: workoutId={}, email={}, series={}, volume={}", workoutId, email, setsCompleted, totalVolume);
+        return response;
     }
 
     /*
@@ -310,9 +325,14 @@ public class WorkoutService {
      */
     @Transactional
     public void delete(Long id, String email) {
+        log.info("Deletando treino: id={}, email={}", id, email);
         Workout w = workoutRepository.findByIdAndUserEmail(id, email)
-                .orElseThrow(() -> new IllegalArgumentException("Treino não encontrado."));
+                .orElseThrow(() -> {
+                    log.warn("Deleção falhou — treino não encontrado: id={}, email={}", id, email);
+                    return new IllegalArgumentException("Treino não encontrado.");
+                });
         workoutRepository.delete(w);
+        log.info("Treino deletado: id={}, email={}", id, email);
     }
 
     /*
