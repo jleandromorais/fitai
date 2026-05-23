@@ -78,21 +78,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY não configurada." }, { status: 500 });
   }
 
-  const body: GenerateRequest = await req.json();
-
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 4096,
-    messages: [{ role: "user", content: buildPrompt(body) }],
-  });
-
-  const raw = message.content[0].type === "text" ? message.content[0].text : "";
-
   try {
+    const body: GenerateRequest = await req.json();
+
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: buildPrompt(body) }],
+    });
+
+    const raw = message.content[0].type === "text" ? message.content[0].text : "";
     const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    if (!clean) {
+      return NextResponse.json({ error: "IA retornou resposta vazia. Tente novamente." }, { status: 502 });
+    }
+
     const parsed: GenerateResponse = JSON.parse(clean);
     return NextResponse.json(parsed);
-  } catch {
-    return NextResponse.json({ error: "Resposta inválida da IA. Tente novamente." }, { status: 502 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro inesperado.";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
