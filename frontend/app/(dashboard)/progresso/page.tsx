@@ -89,7 +89,7 @@ export default function ProgressoPage() {
   }
 
   // ── Estado vazio: nenhum treino ou nenhuma sessão feita ainda ──────────────
-  const hasSessions = data && (data.totalSetsCompleted > 0 || data.exercises.some(e => e.prevWeight > 0 || e.delta !== 0));
+  const hasSessions = data && data.exercises.some(e => e.prevWeight > 0);
 
   if (!data || !hasSessions) {
     return (
@@ -117,8 +117,8 @@ export default function ProgressoPage() {
 
   // ── Dados derivados ────────────────────────────────────────────────────────
 
-  // Só mostra exercícios que foram realmente executados (têm histórico ou delta)
-  const exercisesWithLoad = data.exercises.filter(e => e.currentWeight > 0 && (e.totalSets > 0 || e.prevWeight > 0));
+  // Só mostra exercícios com histórico real (executados ao menos duas vezes)
+  const exercisesWithLoad = data.exercises.filter(e => e.currentWeight > 0 && e.prevWeight > 0);
 
   // Exercício seleccionado actualmente na aba Força
   const selectedEx = exercisesWithLoad[exIdx] ?? data.exercises[0];
@@ -276,7 +276,7 @@ export default function ProgressoPage() {
           <div className="card">
             <div className="h-eyebrow" style={{ marginBottom: 16 }}>Todos os exercícios</div>
             <div className="col gap-3" style={{ maxHeight: 480, overflowY: "auto" }}>
-              {data.exercises.length > 0 ? data.exercises.map((ex, i) => (
+              {data.exercises.length > 0 ? data.exercises.filter(e => e.prevWeight > 0).map((ex, _i) => (
                 <div
                   key={ex.name}
                   className="row between"
