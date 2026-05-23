@@ -25,9 +25,6 @@ export interface GenerateResponse {
   workouts: GeneratedWorkout[];
 }
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-
 function buildPrompt(req: GenerateRequest): string {
   return `Você é um personal trainer especialista. Crie um plano de treino personalizado em JSON.
 
@@ -74,30 +71,35 @@ Regras:
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "GEMINI_API_KEY não configurada." }, { status: 500 });
+    return NextResponse.json({ error: "GROQ_API_KEY não configurada." }, { status: 500 });
   }
 
   try {
     const body: GenerateRequest = await req.json();
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPrompt(body) }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: buildPrompt(body) }],
+        temperature: 0.7,
+        max_tokens: 4096,
       }),
     });
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.text();
-      return NextResponse.json({ error: `Gemini API error: ${err}` }, { status: 502 });
+    if (!res.ok) {
+      const err = await res.text();
+      return NextResponse.json({ error: `Groq API error: ${err}` }, { status: 502 });
     }
 
-    const geminiData = await geminiRes.json();
-    const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const data = await res.json();
+    const raw = data?.choices?.[0]?.message?.content ?? "";
     const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     if (!clean) {
