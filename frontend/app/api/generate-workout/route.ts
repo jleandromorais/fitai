@@ -26,7 +26,7 @@ export interface GenerateResponse {
 }
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 function buildPrompt(req: GenerateRequest): string {
   return `Você é um personal trainer especialista. Crie um plano de treino personalizado em JSON.
