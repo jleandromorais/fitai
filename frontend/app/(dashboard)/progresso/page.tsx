@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Trophy, TrendingUp, Dumbbell, Loader2 } from "lucide-react";
+import { Trophy, TrendingUp, Dumbbell, Loader2, Flame, BarChart2 } from "lucide-react";
 import { LineChart, BarChart } from "@/components/ui/Charts";
 import { useProgress, ExerciseProgress } from "@/hooks/useProgress";
+import { useSessions } from "@/hooks/useSessions";
 import Link from "next/link";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ function deltaColor(d: number): string {
 
 export default function ProgressoPage() {
   const { data, loading, error } = useProgress();
+  const { sessions } = useSessions(90);
 
   // Aba activa: força | volume | prs
   const [tab, setTab] = useState("forca");
@@ -320,91 +322,201 @@ export default function ProgressoPage() {
       )}
 
       {/* ══ ABA: VOLUME ═════════════════════════════════════════════════════════ */}
-      {tab === "volume" && (
-        <div className="col-stack">
+      {tab === "volume" && (() => {
+        const weekAgo = Date.now() - 7 * 86400000;
+        const thisWeek = sessions.filter(s => new Date(s.executedAt).getTime() > weekAgo);
+        const weekVolume = thisWeek.reduce((sum, s) => sum + (s.totalVolume ?? 0), 0);
+        const avgVolume = sessions.length > 0
+          ? sessions.reduce((sum, s) => sum + (s.totalVolume ?? 0), 0) / sessions.length
+          : 0;
 
-          {/* Gráfico de barras: volume por treino */}
-          {data.volumePerWorkout.length > 0 && data.volumePerWorkout.some(v => v > 0) ? (
-            <div className="card">
-              <div className="row between" style={{ marginBottom: 18 }}>
-                <div>
-                  <div className="h-eyebrow">Volume por treino</div>
-                  <div className="h-display" style={{ fontSize: 36, marginTop: 8 }}>
-                    {fmtVol(data.totalVolume)}
-                    <span className="stat-unit" style={{ fontSize: 16 }}> kg total</span>
+        // Volume por sessão (últimas 12) para gráfico de linha
+        const sessionVolumes = [...sessions].reverse().slice(-12).map(s => s.totalVolume ?? 0);
+
+        // Volume por grupo muscular
+        const muscleVol: Record<string, number> = {};
+        if (data) {
+          for (const ex of data.exercises) {
+            const m = ex.muscle?.split(" ")?.[0] ?? "Outros";
+            const vol = ex.currentWeight * 10 * ex.totalSets;
+            muscleVol[m] = (muscleVol[m] ?? 0) + vol;
+          }
+        }
+        const muscleEntries = Object.entries(muscleVol).sort((a, b) => b[1] - a[1]);
+        const maxMuscleVol = muscleEntries[0]?.[1] || 1;
+
+        // Exercícios por volume estimado
+        const exByVol = data
+          ? [...data.exercises]
+              .filter(e => e.prevWeight > 0)
+              .map(e => ({ ...e, vol: e.currentWeight * 10 * e.totalSets }))
+              .sort((a, b) => b.vol - a.vol)
+              .slice(0, 8)
+          : [];
+        const maxExVol = exByVol[0]?.vol || 1;
+
+        const hasSessionData = sessions.length > 0;
+        const hasVolumeData = data && data.volumePerWorkout.some(v => v > 0);
+
+        if (!hasSessionData && !hasVolumeData) return (
+          <div className="card" style={{ textAlign: "center", padding: 48 }}>
+            <TrendingUp size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <div style={{ fontSize: 14, color: "var(--text-mute)" }}>Execute treinos para ver o volume acumulado.</div>
+            <Link href="/treinos" className="btn btn-primary" style={{ marginTop: 20 }}>Ir para treinos</Link>
+          </div>
+        );
+
+        return (
+          <div className="col-stack">
+            {/* Stats rápidos */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+              {[
+                { label: "Volume total", val: fmtVol(data?.totalVolume ?? 0), unit: "kg", icon: <TrendingUp size={16} color="var(--accent)" /> },
+                { label: "Esta semana", val: fmtVol(weekVolume), unit: "kg", icon: <Flame size={16} color="var(--accent)" /> },
+                { label: "Sessões", val: String(sessions.length), unit: "", icon: <BarChart2 size={16} color="var(--accent)" /> },
+                { label: "Média/sessão", val: fmtVol(avgVolume), unit: "kg", icon: <Trophy size={16} color="var(--accent)" /> },
+              ].map(c => (
+                <div key={c.label} className="card">
+                  <div className="row between" style={{ marginBottom: 10 }}>
+                    <div className="stat-label">{c.label}</div>
+                    {c.icon}
+                  </div>
+                  <div>
+                    <span className="stat-num">{c.val}</span>
+                    <span className="stat-unit"> {c.unit}</span>
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, color: "var(--text-mute)" }}>Maior volume</div>
-                  <div className="h-mono" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-                    {fmtVol(Math.max(...data.volumePerWorkout))} kg
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-mute)", marginTop: 2 }}>
-                    {data.workoutLabels[data.volumePerWorkout.indexOf(Math.max(...data.volumePerWorkout))]}
-                  </div>
-                </div>
-              </div>
-              <BarChart data={data.volumePerWorkout} height={280} />
-
-              {/* Labels dos treinos abaixo do gráfico */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${Math.min(data.workoutLabels.length, 6)}, 1fr)`,
-                gap: 8, marginTop: 12,
-              }}>
-                {data.workoutLabels.map((label, i) => (
-                  <div key={i} style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 10, color: "var(--text-mute)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {label}
-                    </div>
-                    <div className="h-mono" style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>
-                      {fmtVol(data.volumePerWorkout[i])}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
-          ) : (
-            <div className="card" style={{ textAlign: "center", padding: 48 }}>
-              <TrendingUp size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
-              <div style={{ fontSize: 14, color: "var(--text-mute)" }}>
-                Execute treinos para ver o volume acumulado.
-              </div>
-              <Link href="/treinos" className="btn btn-primary" style={{ marginTop: 20 }}>
-                Ir para treinos
-              </Link>
-            </div>
-          )}
 
-          {/* Breakdown por exercício — volume de cada um */}
-          {data.exercises.length > 0 && (
-            <div className="card">
-              <div className="h-eyebrow" style={{ marginBottom: 14 }}>Volume por exercício</div>
-              <div className="col gap-3">
-                {data.exercises.slice(0, 10).map(ex => {
-                  // Volume estimado: peso × reps × séries (aproximação)
-                  const estVol = ex.currentWeight * 10 * ex.totalSets;
-                  const maxEstVol = data.exercises[0].currentWeight * 10 * data.exercises[0].totalSets || 1;
-                  const pct = Math.min((estVol / maxEstVol) * 100, 100);
-                  return (
-                    <div key={ex.name}>
-                      <div className="row between" style={{ fontSize: 13, marginBottom: 6 }}>
-                        <span>{ex.name}</span>
-                        <span className="h-mono" style={{ color: "var(--text-mute)", fontSize: 11 }}>
-                          {ex.totalSets} séries
-                        </span>
+            <div className="grid-3">
+              <div className="col-stack">
+                {/* Gráfico de linha por sessão */}
+                {sessionVolumes.length >= 2 ? (
+                  <div className="card">
+                    <div className="row between" style={{ marginBottom: 16 }}>
+                      <div>
+                        <div className="h-eyebrow">Volume por sessão</div>
+                        <div className="h-display" style={{ fontSize: 28, marginTop: 6 }}>
+                          {fmtVol(sessionVolumes[sessionVolumes.length - 1])}<span className="stat-unit">kg</span>
+                        </div>
                       </div>
-                      <div className="bar-track">
-                        <div className="bar-fill" style={{ width: `${pct}%` }} />
+                      <div style={{ fontSize: 11, color: "var(--text-mute)", textAlign: "right" }}>
+                        Últimas {sessionVolumes.length} sessões
                       </div>
                     </div>
-                  );
-                })}
+                    <LineChart data={sessionVolumes} height={200} yLabel={v => `${fmtVol(v)}kg`} showDots />
+                  </div>
+                ) : data && data.volumePerWorkout.some(v => v > 0) ? (
+                  <div className="card">
+                    <div className="row between" style={{ marginBottom: 16 }}>
+                      <div>
+                        <div className="h-eyebrow">Volume por treino</div>
+                        <div className="h-display" style={{ fontSize: 28, marginTop: 6 }}>
+                          {fmtVol(data.totalVolume)}<span className="stat-unit">kg</span>
+                        </div>
+                      </div>
+                    </div>
+                    <BarChart data={data.volumePerWorkout} height={200} />
+                    <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                      {data.workoutLabels.map((l, i) => (
+                        <div key={i} style={{ fontSize: 11, color: "var(--text-mute)" }}>
+                          <span style={{ fontWeight: 700, color: "var(--accent)" }}>{l.split("—")[0]?.trim()}</span>
+                          {" · "}{fmtVol(data.volumePerWorkout[i])}kg
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Sessões recentes */}
+                {sessions.length > 0 && (
+                  <div className="card">
+                    <div className="h-eyebrow" style={{ marginBottom: 14 }}>Sessões recentes</div>
+                    <div className="col gap-3">
+                      {sessions.slice(0, 6).map((s, i) => (
+                        <div key={i} className="row between">
+                          <div className="row gap-3">
+                            <div style={{
+                              width: 32, height: 32, borderRadius: 8, background: "var(--accent-soft)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontWeight: 700, fontSize: 12, color: "var(--accent)", flexShrink: 0,
+                            }}>{s.workoutCode}</div>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{s.workoutName}</div>
+                              <div style={{ fontSize: 11, color: "var(--text-mute)", marginTop: 1 }}>
+                                {new Date(s.executedAt).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}
+                                {s.durationMinutes ? ` · ${s.durationMinutes} min` : ""}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="h-mono" style={{ fontSize: 13, fontWeight: 700 }}>
+                            {fmtVol(s.totalVolume ?? 0)}kg
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Coluna direita */}
+              <div className="col-stack">
+                {/* Volume por grupo muscular */}
+                {muscleEntries.length > 0 && (
+                  <div className="card">
+                    <div className="h-eyebrow" style={{ marginBottom: 14 }}>Por grupo muscular</div>
+                    <div className="col gap-3">
+                      {muscleEntries.slice(0, 7).map(([m, v]) => (
+                        <div key={m}>
+                          <div className="row between" style={{ fontSize: 13, marginBottom: 6 }}>
+                            <span>{m}</span>
+                            <span className="h-mono" style={{ color: "var(--text-mute)", fontSize: 11 }}>
+                              {fmtVol(v)}kg
+                            </span>
+                          </div>
+                          <div className="bar-track">
+                            <div className="bar-fill" style={{ width: `${(v / maxMuscleVol) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top exercícios */}
+                {exByVol.length > 0 && (
+                  <div className="card">
+                    <div className="h-eyebrow" style={{ marginBottom: 14 }}>Top exercícios</div>
+                    <div className="col gap-3">
+                      {exByVol.map((ex, i) => (
+                        <div key={ex.name} className="row gap-3">
+                          <div style={{
+                            width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                            background: i === 0 ? "var(--accent)" : "var(--surface-2)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 10, fontWeight: 700,
+                            color: i === 0 ? "#000" : "var(--text-dim)",
+                          }}>{i + 1}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500 }}>{ex.name}</div>
+                            <div className="bar-track" style={{ marginTop: 4 }}>
+                              <div className="bar-fill" style={{ width: `${(ex.vol / maxExVol) * 100}%` }} />
+                            </div>
+                          </div>
+                          <div className="h-mono" style={{ fontSize: 12, color: "var(--text-mute)" }}>
+                            {ex.currentWeight}kg
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       {/* ══ ABA: RECORDES (PRs) ═════════════════════════════════════════════════ */}
       {tab === "prs" && (
