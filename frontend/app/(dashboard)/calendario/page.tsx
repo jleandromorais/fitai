@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Dumbbell } from "lucide-react";
+import { ChevronLeft, ChevronRight, Dumbbell, Check } from "lucide-react";
 import { useWorkouts } from "@/hooks/useWorkouts";
+import { useSessions } from "@/hooks/useSessions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
@@ -51,6 +52,7 @@ function firstDayOfMonth(year: number, month: number): number {
 
 export default function CalendarioPage() {
   const { workouts, loading } = useWorkouts();
+  const { sessions } = useSessions(365);
 
   // Navegação de mês
   const [mesOffset, setMesOffset] = useState(0);
@@ -59,6 +61,18 @@ export default function CalendarioPage() {
   baseDate.setMonth(baseDate.getMonth() + mesOffset);
   const year  = baseDate.getFullYear();
   const month = baseDate.getMonth();
+
+  // ── Dias com sessão real executada no mês atual ───────────────────────────
+  const doneDays = useMemo(() => {
+    const set = new Set<number>();
+    for (const s of sessions) {
+      const d = new Date(s.executedAt);
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        set.add(d.getDate());
+      }
+    }
+    return set;
+  }, [sessions, year, month]);
 
   // ── Construir mapa de dias treinados ──────────────────────────────────────
   // Usa o campo `schedule` de cada treino para marcar os dias da semana
@@ -130,9 +144,14 @@ export default function CalendarioPage() {
         <div className="card">
           <div className="h-eyebrow">Dias com treino</div>
           <div className="h-display" style={{ fontSize: 30, marginTop: 8 }}>
-            {trainedCount}
+            {doneDays.size > 0 ? doneDays.size : trainedCount}
             <span className="stat-unit">/{workingDays} dias</span>
           </div>
+          {doneDays.size > 0 && (
+            <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 4, fontWeight: 600 }}>
+              {doneDays.size} sessão{doneDays.size !== 1 ? "s" : ""} concluída{doneDays.size !== 1 ? "s" : ""}
+            </div>
+          )}
         </div>
         <div className="card">
           <div className="h-eyebrow">Treinos</div>
@@ -185,6 +204,7 @@ export default function CalendarioPage() {
             {Array.from({ length: cells }).map((_, i) => {
               const day = i + 1;
               const trained = trainedDays[day];
+              const done = doneDays.has(day);
               const today = new Date();
               const isToday = day === today.getDate() &&
                               month === today.getMonth() &&
@@ -193,12 +213,14 @@ export default function CalendarioPage() {
               return (
                 <div key={day} style={{
                   aspectRatio: "1", borderRadius: 8,
-                  background: trained ? "var(--surface-2)" : "transparent",
-                  border: isToday
+                  background: done ? "rgba(0,255,136,0.08)" : trained ? "var(--surface-2)" : "transparent",
+                  border: done
                     ? "1.5px solid var(--accent)"
-                    : trained
-                      ? "1px solid var(--border)"
-                      : "1px dashed var(--border-soft)",
+                    : isToday
+                      ? "1.5px solid var(--accent)"
+                      : trained
+                        ? "1px solid var(--border)"
+                        : "1px dashed var(--border-soft)",
                   display: "flex", flexDirection: "column",
                   alignItems: "center", justifyContent: "center",
                   position: "relative", cursor: trained ? "pointer" : "default",
@@ -207,13 +229,33 @@ export default function CalendarioPage() {
                   <span style={{
                     fontSize: 11,
                     fontFamily: "var(--font-mono)",
-                    color: isToday ? "var(--accent)" : trained ? "var(--text-dim)" : "var(--text-mute)",
-                    fontWeight: isToday ? 700 : 400,
+                    color: done ? "var(--accent)" : isToday ? "var(--accent)" : trained ? "var(--text-dim)" : "var(--text-mute)",
+                    fontWeight: done || isToday ? 700 : 400,
                   }}>
                     {day}
                   </span>
-                  {/* Código do treino programado para este dia */}
-                  {trained && (
+                  {/* Checkmark para dias realmente treinados */}
+                  {done && (
+                    <div style={{
+                      position: "absolute", top: 2, right: 2,
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: "var(--accent)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Check size={7} color="#000" strokeWidth={3} />
+                    </div>
+                  )}
+                  {/* Código do treino programado */}
+                  {trained && !done && (
+                    <span style={{
+                      position: "absolute", bottom: 3,
+                      fontSize: 7, fontWeight: 700,
+                      color: codeColor(trained.code),
+                    }}>
+                      {trained.code}
+                    </span>
+                  )}
+                  {done && trained && (
                     <span style={{
                       position: "absolute", bottom: 3,
                       fontSize: 7, fontWeight: 700,
