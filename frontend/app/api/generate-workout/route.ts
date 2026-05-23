@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
 export interface GenerateRequest {
@@ -26,7 +25,8 @@ export interface GenerateResponse {
   workouts: GeneratedWorkout[];
 }
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
 
 function buildPrompt(req: GenerateRequest): string {
   return `Você é um personal trainer especialista. Crie um plano de treino personalizado em JSON.
@@ -74,20 +74,30 @@ Regras:
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY não configurada." }, { status: 500 });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: "GEMINI_API_KEY não configurada." }, { status: 500 });
   }
 
   try {
     const body: GenerateRequest = await req.json();
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: buildPrompt(body) }],
+    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: buildPrompt(body) }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+      }),
     });
 
-    const raw = message.content[0].type === "text" ? message.content[0].text : "";
+    if (!geminiRes.ok) {
+      const err = await geminiRes.text();
+      return NextResponse.json({ error: `Gemini API error: ${err}` }, { status: 502 });
+    }
+
+    const geminiData = await geminiRes.json();
+    const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const clean = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     if (!clean) {
