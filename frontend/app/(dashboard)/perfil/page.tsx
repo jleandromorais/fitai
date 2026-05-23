@@ -1,12 +1,24 @@
 "use client";
 
-import { Bell, Settings, Flame, Trophy, Target, ChevronRight, LogOut, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Bell, Settings, Flame, Trophy, Target, ChevronRight, ChevronDown, LogOut, Sparkles, User, Save } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkouts } from "@/hooks/useWorkouts";
+
+type Section = "dados" | "objetivos" | "unidades" | null;
+
+const OBJETIVOS = ["Hipertrofia", "Força", "Resistência", "Emagrecimento", "Saúde geral"];
 
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { workouts } = useWorkouts();
+
+  const [open, setOpen] = useState<Section>(null);
+  const [nome, setNome] = useState(user?.name ?? "");
+  const [email] = useState(user?.email ?? "");
+  const [objetivo, setObjetivo] = useState("Hipertrofia");
+  const [unidade, setUnidade] = useState<"kg/cm" | "lbs/in">("kg/cm");
+  const [saved, setSaved] = useState<Section>(null);
 
   const initials = user?.name
     ? user.name.split(" ").slice(0, 2).map(w => w[0].toUpperCase()).join("")
@@ -20,6 +32,43 @@ export default function PerfilPage() {
     if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
     return String(v);
   }
+
+  function toggle(s: Section) {
+    setOpen(prev => prev === s ? null : s);
+    setSaved(null);
+  }
+
+  function handleSave(s: Section) {
+    setSaved(s);
+    setTimeout(() => setSaved(null), 2000);
+  }
+
+  const conquistas = [
+    { icon: <Flame size={16} color="var(--accent)" />, t: "12 dias streak", s: "Em andamento", done: true },
+    { icon: <Trophy size={16} color="var(--accent)" />, t: "10 treinos", s: workouts.length >= 10 ? "Conquistado" : `${workouts.length}/10`, done: workouts.length >= 10 },
+    { icon: <Trophy size={16} color="var(--accent)" />, t: "50 treinos", s: workouts.length >= 50 ? "Conquistado" : `${workouts.length}/50`, done: workouts.length >= 50 },
+    { icon: <Trophy size={16} color="var(--accent)" />, t: "100 treinos", s: workouts.length >= 100 ? "Conquistado" : `${workouts.length}/100`, done: workouts.length >= 100 },
+    { icon: <Target size={16} color="var(--accent)" />, t: "Primeiro treino", s: workouts.length >= 1 ? "Conquistado" : "Pendente", done: workouts.length >= 1 },
+  ];
+
+  const settingRow = (label: string, icon: React.ReactNode, key: Section, children: React.ReactNode) => (
+    <div key={label}>
+      <div
+        className="row gap-3"
+        style={{ padding: "14px 20px", cursor: "pointer", borderBottom: open === key ? "none" : "1px solid var(--border-soft)" }}
+        onClick={() => toggle(key)}
+      >
+        <span style={{ color: "var(--text-dim)" }}>{icon}</span>
+        <div style={{ flex: 1, fontSize: 14 }}>{label}</div>
+        {open === key ? <ChevronDown size={16} color="var(--text-mute)" /> : <ChevronRight size={16} color="var(--text-mute)" />}
+      </div>
+      {open === key && (
+        <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border-soft)", borderBottom: "1px solid var(--border-soft)", background: "var(--surface-1)" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="anim-up">
@@ -56,12 +105,12 @@ export default function PerfilPage() {
             }}>
               <div>
                 <div className="h-eyebrow">Lifetime · Treinos</div>
-                <div className="h-display" style={{ fontSize: 28, marginTop: 8 }}>{workouts.length}</div>
+                <div className="h-display" style={{ fontSize: 28, marginTop: 8 }}>{workouts.length || "—"}</div>
               </div>
               <div>
                 <div className="h-eyebrow">Lifetime · Volume</div>
                 <div className="h-display" style={{ fontSize: 28, marginTop: 8 }}>
-                  {formatVolume(totalVolume)}<span className="stat-unit">kg</span>
+                  {totalVolume > 0 ? formatVolume(totalVolume) : "—"}<span className="stat-unit">{totalVolume > 0 ? "kg" : ""}</span>
                 </div>
               </div>
               <div>
@@ -73,29 +122,87 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          {/* Settings groups */}
-          {([
-            ["Conta", [["Dados pessoais", <Settings key="s" size={18} />], ["Objetivos", <Target key="t" size={18} />], ["Unidades (kg / cm)", <Trophy key="tr" size={18} />]]],
-            ["Aplicativo", [["Tema", <Sparkles key="sp" size={18} />], ["Idioma", <Settings key="s2" size={18} />], ["Notificações", <Bell key="b" size={18} />]]],
-          ] as [string, [string, React.ReactNode][]][]).map(([sec, items]) => (
-            <div key={sec} className="card" style={{ padding: 0 }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-soft)" }}>
-                <div className="h-eyebrow">{sec}</div>
-              </div>
-              <div>
-                {items.map(([label, icon], i) => (
-                  <div key={label} className="row gap-3" style={{
-                    padding: "14px 20px", cursor: "pointer",
-                    borderBottom: i < items.length - 1 ? "1px solid var(--border-soft)" : "none",
-                  }}>
-                    <span style={{ color: "var(--text-dim)" }}>{icon}</span>
-                    <div style={{ flex: 1, fontSize: 14 }}>{label}</div>
-                    <ChevronRight size={16} color="var(--text-mute)" />
-                  </div>
-                ))}
-              </div>
+          {/* Conta */}
+          <div className="card" style={{ padding: 0 }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-soft)" }}>
+              <div className="h-eyebrow">Conta</div>
             </div>
-          ))}
+
+            {settingRow("Dados pessoais", <User size={18} />, "dados",
+              <div className="col gap-3">
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Nome</label>
+                  <input className="input" value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Email</label>
+                  <input className="input" value={email} disabled style={{ opacity: 0.5 }} />
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }} onClick={() => handleSave("dados")}>
+                  {saved === "dados" ? <><Save size={13} /> Salvo!</> : <><Save size={13} /> Salvar</>}
+                </button>
+              </div>
+            )}
+
+            {settingRow("Objetivos", <Target size={18} />, "objetivos",
+              <div className="col gap-3">
+                <label style={{ fontSize: 12, color: "var(--text-dim)" }}>Objetivo principal</label>
+                <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                  {OBJETIVOS.map(o => (
+                    <button
+                      key={o}
+                      className={`chip${objetivo === o ? " chip-accent" : ""}`}
+                      style={{ height: 36, padding: "0 14px", cursor: "pointer" }}
+                      onClick={() => setObjetivo(o)}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }} onClick={() => handleSave("objetivos")}>
+                  {saved === "objetivos" ? <><Save size={13} /> Salvo!</> : <><Save size={13} /> Salvar</>}
+                </button>
+              </div>
+            )}
+
+            {settingRow("Unidades (kg / cm)", <Settings size={18} />, "unidades",
+              <div className="col gap-3">
+                <label style={{ fontSize: 12, color: "var(--text-dim)" }}>Sistema de medidas</label>
+                <div className="row gap-3">
+                  {(["kg/cm", "lbs/in"] as const).map(u => (
+                    <button
+                      key={u}
+                      className={`chip${unidade === u ? " chip-accent" : ""}`}
+                      style={{ height: 36, padding: "0 18px", cursor: "pointer" }}
+                      onClick={() => setUnidade(u)}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ alignSelf: "flex-end" }} onClick={() => handleSave("unidades")}>
+                  {saved === "unidades" ? <><Save size={13} /> Salvo!</> : <><Save size={13} /> Salvar</>}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Aplicativo */}
+          <div className="card" style={{ padding: 0 }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-soft)" }}>
+              <div className="h-eyebrow">Aplicativo</div>
+            </div>
+            {[["Tema", <Sparkles key="sp" size={18} />], ["Idioma", <Settings key="s2" size={18} />], ["Notificações", <Bell key="b" size={18} />]].map(([label, icon], i, arr) => (
+              <div key={label as string} className="row gap-3" style={{
+                padding: "14px 20px", cursor: "pointer",
+                borderBottom: i < arr.length - 1 ? "1px solid var(--border-soft)" : "none",
+              }}>
+                <span style={{ color: "var(--text-dim)" }}>{icon}</span>
+                <div style={{ flex: 1, fontSize: 14 }}>{label}</div>
+                <ChevronRight size={16} color="var(--text-mute)" />
+              </div>
+            ))}
+          </div>
 
           <button
             className="btn btn-danger btn-block"
@@ -117,23 +224,21 @@ export default function PerfilPage() {
             <button className="btn btn-primary btn-block btn-sm">Convidar</button>
           </div>
 
+          {/* Conquistas */}
           <div className="card">
             <div className="h-eyebrow" style={{ marginBottom: 14 }}>Conquistas</div>
             <div className="col gap-3">
-              {[
-                { icon: <Flame size={16} color="var(--accent)" />, t: "12 dias streak", s: "Em andamento" },
-                { icon: <Trophy size={16} color="var(--accent)" />, t: "Supino 1.5x peso", s: "Há 2 dias" },
-                { icon: <Target size={16} color="var(--accent)" />, t: "100 treinos", s: "Há 1 mês" },
-              ].map(a => (
+              {conquistas.map(a => (
                 <div key={a.t} className="row gap-3">
                   <div style={{
                     width: 36, height: 36, borderRadius: 9,
-                    background: "var(--accent-soft)",
+                    background: a.done ? "var(--accent-soft)" : "var(--surface-2)",
                     display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    opacity: a.done ? 1 : 0.4,
                   }}>{a.icon}</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.t}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-mute)", marginTop: 2 }}>{a.s}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, opacity: a.done ? 1 : 0.5 }}>{a.t}</div>
+                    <div style={{ fontSize: 11, color: a.done ? "var(--accent)" : "var(--text-mute)", marginTop: 2 }}>{a.s}</div>
                   </div>
                 </div>
               ))}
