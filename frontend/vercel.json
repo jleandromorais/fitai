@@ -3,5 +3,5 @@
   "outputDirectory": ".next",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["gru1"]
+  "regions": ["iad1"]
 }
