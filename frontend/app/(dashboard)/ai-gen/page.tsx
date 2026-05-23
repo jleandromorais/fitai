@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Sparkles, Send, RefreshCw, Check } from "lucide-react";
 
 type Message = { who: "ai" | "me"; text: string; chips?: string[] };
+type WorkoutPlan = { titulo: string; resumo: string; dias: string[] };
 
 const INITIAL: Message[] = [
   {
@@ -25,9 +26,10 @@ export default function AiGenPage() {
   const [messages, setMessages] = useState<Message[]>(INITIAL);
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
-  const [done, setDone] = useState(false);
+  const [plan, setPlan] = useState<WorkoutPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function pick(answer: string) {
+  async function pick(answer: string) {
     const next: Message[] = [...messages, { who: "me", text: answer }];
     if (step < FLOW.length) {
       const f = FLOW[step];
@@ -37,14 +39,33 @@ export default function AiGenPage() {
     } else {
       setMessages(next);
       setGenerating(true);
-      setTimeout(() => { setGenerating(false); setDone(true); }, 2400);
+      setError(null);
+
+      const answers = [...next.filter(m => m.who === "me").map(m => m.text)];
+      const [nivel, objetivo, dias, equipamentos, tempo] = answers;
+
+      try {
+        const res = await fetch("/api/gerar-treino", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nivel, objetivo, dias, equipamentos, tempo }),
+        });
+        if (!res.ok) throw new Error("Erro ao gerar treino");
+        const data: WorkoutPlan = await res.json();
+        setPlan(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro desconhecido");
+      } finally {
+        setGenerating(false);
+      }
     }
   }
 
   function reset() {
     setMessages(INITIAL);
     setStep(0);
-    setDone(false);
+    setPlan(null);
+    setError(null);
     setGenerating(false);
   }
 
@@ -75,7 +96,7 @@ export default function AiGenPage() {
                         background: "var(--surface-2)", padding: "14px 18px",
                         borderRadius: "4px 16px 16px 16px", fontSize: 14, lineHeight: 1.55,
                       }}>{m.text}</div>
-                      {m.chips && i === messages.length - 1 && !done && !generating && (
+                      {m.chips && i === messages.length - 1 && !plan && !generating && (
                         <div className="row gap-2" style={{ flexWrap: "wrap", marginTop: 12 }}>
                           {m.chips.map(c => (
                             <button key={c} className="chip" style={{ height: 36, padding: "0 14px" }} onClick={() => pick(c)}>
@@ -116,8 +137,15 @@ export default function AiGenPage() {
               </div>
             )}
 
+            {/* Error */}
+            {error && (
+              <div className="anim-up" style={{ color: "var(--danger, #f87171)", fontSize: 14, padding: "12px 0" }}>
+                {error} — <button style={{ textDecoration: "underline", background: "none", border: "none", color: "inherit", cursor: "pointer" }} onClick={reset}>Tentar novamente</button>
+              </div>
+            )}
+
             {/* Result */}
-            {done && (
+            {plan && (
               <div className="anim-up">
                 <div className="card card-accent" style={{ marginTop: 16 }}>
                   <div className="row gap-3" style={{ marginBottom: 16 }}>
@@ -129,11 +157,11 @@ export default function AiGenPage() {
                     </div>
                     <div>
                       <div className="h-display" style={{ fontSize: 20 }}>Treino gerado!</div>
-                      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Push-Pull-Legs · 4 dias/semana · ~60 min</div>
+                      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{plan.titulo} · {plan.resumo}</div>
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 16 }}>
-                    {["A — Peito & Tríceps", "B — Costas & Bíceps", "C — Pernas", "D — Ombros & Core"].map(d => (
+                    {plan.dias.map(d => (
                       <div key={d} style={{ background: "var(--surface-2)", padding: "10px 14px", borderRadius: 10, fontSize: 13 }}>{d}</div>
                     ))}
                   </div>
@@ -150,7 +178,7 @@ export default function AiGenPage() {
         </div>
 
         {/* Input */}
-        {!done && !generating && (
+        {!plan && !generating && !error && (
           <div style={{ padding: 20, borderTop: "1px solid var(--border-soft)" }}>
             <div className="row gap-3">
               <input className="input flex-1" placeholder="Digite sua resposta..." />
