@@ -89,7 +89,9 @@ export default function ProgressoPage() {
   }
 
   // ── Estado vazio: nenhum treino ou nenhuma sessão feita ainda ──────────────
-  if (!data || data.totalWorkouts === 0) {
+  const hasSessions = data && (data.totalSetsCompleted > 0 || data.exercises.some(e => e.prevWeight > 0 || e.delta !== 0));
+
+  if (!data || !hasSessions) {
     return (
       <div className="anim-up">
         <div className="page-head">
@@ -115,8 +117,8 @@ export default function ProgressoPage() {
 
   // ── Dados derivados ────────────────────────────────────────────────────────
 
-  // Exercícios com pelo menos 1 série e com peso > 0 (exclui peso corporal do gráfico de força)
-  const exercisesWithLoad = data.exercises.filter(e => e.currentWeight > 0);
+  // Só mostra exercícios que foram realmente executados (têm histórico ou delta)
+  const exercisesWithLoad = data.exercises.filter(e => e.currentWeight > 0 && (e.totalSets > 0 || e.prevWeight > 0));
 
   // Exercício seleccionado actualmente na aba Força
   const selectedEx = exercisesWithLoad[exIdx] ?? data.exercises[0];
