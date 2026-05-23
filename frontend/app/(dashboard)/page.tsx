@@ -14,7 +14,7 @@ import type { Workout } from "@/hooks/useWorkouts";
 // Helpers de cálculo
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex"];
+const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
 function calcMuscleDistribution(workouts: Workout[]) {
   const counts: Record<string, number> = {};
