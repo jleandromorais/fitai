@@ -29,6 +29,13 @@ public class WorkoutController {
         return ResponseEntity.ok(workoutService.getProgress(user.getUsername()));
     }
 
+    @GetMapping("/sessions/recent")
+    public ResponseEntity<List<SessionHistoryDto>> recentSessions(
+            @RequestParam(defaultValue = "30") int days,
+            @AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok(workoutService.getRecentSessions(user.getUsername(), days));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<WorkoutDto> get(@PathVariable Long id,
                                           @AuthenticationPrincipal UserDetails user) {

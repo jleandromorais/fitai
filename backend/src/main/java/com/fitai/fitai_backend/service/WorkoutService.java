@@ -4,12 +4,14 @@ import com.fitai.fitai_backend.dto.*;
 import com.fitai.fitai_backend.model.*;
 import com.fitai.fitai_backend.repository.UserRepository;
 import com.fitai.fitai_backend.repository.WorkoutRepository;
+import com.fitai.fitai_backend.repository.WorkoutSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -18,8 +20,9 @@ public class WorkoutService {
 
     private static final Logger log = LoggerFactory.getLogger(WorkoutService.class);
 
-    private final WorkoutRepository workoutRepository;
-    private final UserRepository    userRepository;
+    private final WorkoutRepository        workoutRepository;
+    private final UserRepository           userRepository;
+    private final WorkoutSessionRepository sessionRepository;
 
     /*
      * LISTAR TREINOS
@@ -230,10 +233,39 @@ public class WorkoutService {
 
         workoutRepository.save(workout);
 
+        // Registra o histórico da sessão
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Usuário não encontrado."));
+        sessionRepository.save(WorkoutSession.builder()
+                .workout(workout)
+                .user(user)
+                .executedAt(LocalDateTime.now())
+                .durationMinutes(req.getDurationMinutes() != null ? req.getDurationMinutes() : 0)
+                .setsCompleted(setsCompleted)
+                .totalVolume(totalVolume)
+                .build());
+
         SessionResponse response = new SessionResponse(setsCompleted, totalVolume,
                 req.getDurationMinutes() != null ? req.getDurationMinutes() : 0);
         log.info("Sessão salva: workoutId={}, email={}, series={}, volume={}", workoutId, email, setsCompleted, totalVolume);
         return response;
+    }
+
+    public List<SessionHistoryDto> getRecentSessions(String email, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        return sessionRepository
+                .findAllByUserEmailAndExecutedAtAfterOrderByExecutedAtDesc(email, since)
+                .stream()
+                .map(s -> new SessionHistoryDto(
+                        s.getWorkout().getId(),
+                        s.getWorkout().getName(),
+                        s.getWorkout().getCode(),
+                        s.getExecutedAt(),
+                        s.getDurationMinutes(),
+                        s.getSetsCompleted(),
+                        s.getTotalVolume()
+                ))
+                .toList();
     }
 
     /*

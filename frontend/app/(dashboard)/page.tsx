@@ -6,6 +6,7 @@ import { Sparkline } from "@/components/ui/Charts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkouts } from "@/hooks/useWorkouts";
 import { useProgress } from "@/hooks/useProgress";
+import { useSessions } from "@/hooks/useSessions";
 import { useMemo } from "react";
 import type { Workout } from "@/hooks/useWorkouts";
 
@@ -53,6 +54,7 @@ export default function Dashboard() {
 
   const { workouts, loading, error } = useWorkouts();
   const { data: progress } = useProgress();
+  const { sessions } = useSessions(7);
 
   const stats = useMemo(() => {
     if (workouts.length === 0) return null;
@@ -113,9 +115,13 @@ export default function Dashboard() {
 
   const { totalVolume, totalSets, featured, muscleDistribution, volumeSparkline } = stats!;
 
-  const scheduledDays = featured.schedule
-    ? featured.schedule.split(/[,·\s]+/).map(d => d.trim()).filter(Boolean)
-    : [];
+  // Dias da semana atual em que o usuário realmente treinou
+  const trainedDays = new Set(
+    sessions.map(s => {
+      const d = new Date(s.executedAt).getDay(); // 0=Dom,1=Seg...
+      return ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d];
+    })
+  );
 
   return (
     <div className="anim-up">
@@ -203,12 +209,10 @@ export default function Dashboard() {
               </div>
               {/* Dias programados */}
               <div style={{ width: 200 }}>
-                <div className="h-eyebrow" style={{ marginBottom: 12 }}>Dias programados</div>
+                <div className="h-eyebrow" style={{ marginBottom: 12 }}>Treinado esta semana</div>
                 <div className="col gap-2">
                   {WEEK_DAYS.map(d => {
-                    const active = scheduledDays.some(sd =>
-                      sd.toLowerCase().startsWith(d.toLowerCase().slice(0, 3))
-                    );
+                    const active = trainedDays.has(d);
                     return (
                       <div key={d} className="row between" style={{ fontSize: 12 }}>
                         <span style={{ color: "var(--text-mute)", width: 32 }}>{d}</span>
